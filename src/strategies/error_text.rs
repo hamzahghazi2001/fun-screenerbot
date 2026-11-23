@@ -79,6 +79,10 @@ const FIELDS: &[(&str, MessageId)] = &[
         "long window transactions",
         ids::STRATEGIES_ERROR_FIELD_LONG_WINDOW_TRANSACTIONS,
     ),
+    (
+        "max candle change",
+        ids::STRATEGIES_ERROR_FIELD_MAX_CANDLE_CHANGE,
+    ), // FORK: F2
     ("maximum drop", ids::STRATEGIES_ERROR_FIELD_MAXIMUM_DROP),
     ("minimum drop", ids::STRATEGIES_ERROR_FIELD_MINIMUM_DROP),
     ("multiple", ids::STRATEGIES_ERROR_FIELD_MULTIPLE),
@@ -88,6 +92,19 @@ const FIELDS: &[(&str, MessageId)] = &[
         "remaining position value",
         ids::STRATEGIES_ERROR_FIELD_REMAINING_POSITION_VALUE,
     ),
+    (
+        "require higher low",
+        ids::STRATEGIES_ERROR_FIELD_REQUIRE_HIGHER_LOW,
+    ), // FORK: F2
+    (
+        "resistance lookback",
+        ids::STRATEGIES_ERROR_FIELD_RESISTANCE_LOOKBACK,
+    ), // FORK: F2
+    (
+        "retest tolerance",
+        ids::STRATEGIES_ERROR_FIELD_RETEST_TOLERANCE,
+    ), // FORK: F2
+    ("retest window", ids::STRATEGIES_ERROR_FIELD_RETEST_WINDOW), // FORK: F2
     ("signal", ids::STRATEGIES_ERROR_FIELD_SIGNAL),
     ("squeeze width", ids::STRATEGIES_ERROR_FIELD_SQUEEZE_WIDTH),
     (
@@ -126,8 +143,16 @@ const PARAMETER_FIELDS: &[(&str, MessageId)] = &[
     ("change_pct", ids::STRATEGIES_ERROR_FIELD_CHANGE),
     ("distance_pct", ids::STRATEGIES_ERROR_FIELD_DISTANCE),
     ("giveback_pct", ids::STRATEGIES_ERROR_FIELD_GIVEBACK),
+    (
+        "max_candle_change_pct",
+        ids::STRATEGIES_ERROR_FIELD_MAX_CANDLE_CHANGE,
+    ), // FORK: F2
     ("max_drop_pct", ids::STRATEGIES_ERROR_FIELD_MAXIMUM_DROP),
     ("min_drop_pct", ids::STRATEGIES_ERROR_FIELD_MINIMUM_DROP),
+    (
+        "retest_tolerance_pct",
+        ids::STRATEGIES_ERROR_FIELD_RETEST_TOLERANCE,
+    ), // FORK: F2
     (
         "squeeze_width_pct",
         ids::STRATEGIES_ERROR_FIELD_SQUEEZE_WIDTH,
@@ -202,6 +227,10 @@ const INDICATORS: &[(&str, MessageId)] = &[
         "bollinger bands",
         ids::STRATEGIES_ERROR_INDICATOR_BOLLINGER_BANDS,
     ),
+    (
+        "breakout retest",
+        ids::STRATEGIES_ERROR_INDICATOR_BREAKOUT_RETEST,
+    ), // FORK: F2
     (
         "pullback from high",
         ids::STRATEGIES_ERROR_INDICATOR_PULLBACK_FROM_HIGH,

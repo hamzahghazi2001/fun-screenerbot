@@ -5,7 +5,7 @@ review `git diff` + named tests → max 2 `--fix` → commit `TXX: <summary>` an
 Each task is one feature, ≤ 4 files, and must leave `cargo nextest run --all-targets` green.
 All new config fields default to upstream behaviour. 🔒 = stop and ask before committing.
 
-Models: **opus** = claude-opus-4-6-thinking · **sonnet** = claude-sonnet-4-6 · **flash** = gemini-3.8-flash-medium
+Models: **opus** = claude-opus-4-6-thinking · **sonnet** = claude-sonnet-4-6 · **flash** = gemini-3.8-flash-medium · **flash-high** = gemini-3.8-flash-high (fallback on 429)
 
 ## Day 1 — holder gate, breakout-retest, live on exit A
 
@@ -40,10 +40,14 @@ Gate before T03 spec: read Explore Mode rejection reasons — does `max_top_hold
 - [ ] **T04b (deferred): include RugCheck markets[].pubkey as pool accounts**, split into T04b-1 (TokenHolder pool_market field plus test literals) and T04b-2 (parse markets, gate, tests). Build only if live data shows many-pool tokens being over-rejected. Notes: curve1.json is the PUMP token with 442 markets and cannot back a real-vault test; use synthetic holders if built.
 
 ### F2 BreakoutRetest
-- [ ] **T05 BreakoutRetest condition** · sonnet
-  - Goal: new ENTRY condition per SPEC §"The entry rule tree" + F2 prompt: params `timeframe 5m, resistance_lookback 24, retest_window 1-12 (12), retest_tolerance_pct 1.5, max_candle_change_pct 25, require_higher_low true`; closed candles only; pseudocode and Err-vs-false table go in tasks/T05.md.
-  - Files: `src/strategies/conditions/breakout_retest.rs`, `src/strategies/conditions/mod.rs`, `locales/en/strategies.ftl`, `tools/tests/fixtures/dashboard/trader/strategies_condition_schemas.json`
-  - Tests: `cargo nextest run -E 'test(/catalog|condition_schema/)'`
+- [x] **T05a BreakoutRetest evaluator (unregistered)** · flash-high (sonnet 429, ran on fallback)
+  - Goal: new ENTRY condition per SPEC §"The entry rule tree" + F2 prompt: params `timeframe 5m, resistance_lookback 24, retest_window 1-12 (12), retest_tolerance_pct 1.5, max_candle_change_pct 25, require_higher_low true`; closed candles only; pseudocode and Err-vs-false table in tasks/T05a.md. Not registered yet.
+  - Files: `src/strategies/conditions/breakout_retest.rs`, `src/strategies/conditions/mod.rs` (mod + pub use), `src/strategies/error_text.rs`, `locales/en/strategies.ftl` (error labels)
+  - Tests: inline `breakout_retest_*`, `error_text` tests.
+
+- [ ] **T05 Register BreakoutRetest** · flash · 5 files (owner-approved: registration breaks two listing tests unless they change together)
+  - Files: `src/strategies/conditions/mod.rs`, `locales/en/strategies.ftl`, `tools/tests/fixtures/dashboard/trader/strategies_condition_schemas.json`, `tests/strategies_engine.rs`, `tests/strategies_conditions.rs`
+  - Tests: `cargo nextest run -E 'test(/catalog|condition_schema|registry_exposes|no_condition_window/)'`
 
 - [ ] **T06 BreakoutRetest boundary tests** · sonnet
   - Goal: 10 boundary tests; fix the condition only if one fails.

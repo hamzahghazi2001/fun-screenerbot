@@ -3,6 +3,7 @@
 
 //! Strategy condition evaluators for rule-tree nodes (price, volume, candles, market, position, clock).
 mod bollinger_bands;
+mod breakout_retest; // FORK: F2
 mod buy_pressure;
 mod candle_size;
 mod catalog;
@@ -30,6 +31,7 @@ mod volume_spike;
 mod vwap;
 
 pub use bollinger_bands::BollingerBandsCondition;
+pub use breakout_retest::BreakoutRetestCondition; // FORK: F2
 pub use buy_pressure::BuyPressureCondition;
 pub use candle_size::CandleSizeCondition;
 pub use consecutive_candles::ConsecutiveCandlesCondition;
