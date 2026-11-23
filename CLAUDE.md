@@ -10,13 +10,13 @@ Loop per task:
 
 ## Routing (agy's Claude models are quota-capped until about 2026-11-30; agy means Gemini only)
 a) agy, Gemini only:
-   - gemini-3.8-flash-high: logic tasks (conditions, filters, tests with logic)
-   - gemini-3.8-flash-medium: boilerplate (config fields, .ftl strings, fixtures, docs)
-   Every tasks/TXX.md and every --fix message must say:
-   "Run only the named tests, never the full suite, never use BypassSandbox."
+   - gemini-3.8-flash-medium: tasks that only add config fields, locale text (.ftl), condition
+     registration, fixtures, the Telegram score line, CI or docs
+   - gemini-3.8-flash-high: other logic tasks that are not Claude's (boundary/behaviour tests)
    The reviewer (Claude) runs the full suite before committing.
-b) Claude writes the code itself, with Sonnet-level effort, for the money tasks:
-   dynamic sizing (F3: T08-T10), CandidateScore (F4: T11-T14), runner-only trail (F5: T15-T16).
+b) Claude writes the code itself, with Sonnet-level effort, only for the money logic:
+   dynamic sizing calculation and its wiring (T09, T10), CandidateScore evaluation (T11, T12a),
+   runner-only trail logic (T16). Model tag `claude` in docs/TASKS.md.
    Still write tasks/TXX.md first, keep to its file list, run the named tests and the full suite,
    then do the fresh-session review that docs/TASKS.md lists (SPEC test 7) before relying on it.
 c) Claude never edits anything under src/chains/solana/swaps or src/wallets. If a task needs a change

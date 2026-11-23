@@ -5,7 +5,7 @@ review `git diff` + named tests → max 2 `--fix` → commit `TXX: <summary>` an
 Each task is one feature, ≤ 4 files, and must leave `cargo nextest run --all-targets` green.
 All new config fields default to upstream behaviour. 🔒 = stop and ask before committing.
 
-Models: **opus** = claude-opus-4-6-thinking · **sonnet** = claude-sonnet-4-6 · **flash** = gemini-3.8-flash-medium · **flash-high** = gemini-3.8-flash-high (fallback on 429)
+Models: **opus** = claude-opus-4-6-thinking · **sonnet** = claude-sonnet-4-6 · **flash** = gemini-3.8-flash-medium · **flash-high** = gemini-3.8-flash-high (fallback on 429) · **claude** = written by Claude in-session (agy Claude models quota-capped until ~2026-11-30)
 
 ## Day 1 — holder gate, breakout-retest, live on exit A
 
@@ -49,7 +49,7 @@ Gate before T03 spec: read Explore Mode rejection reasons — does `max_top_hold
   - Files: `src/strategies/conditions/mod.rs`, `locales/en/strategies.ftl`, `tools/tests/fixtures/dashboard/trader/strategies_condition_schemas.json`, `tests/strategies_engine.rs`, `tests/strategies_conditions.rs`
   - Tests: `cargo nextest run -E 'test(/catalog|condition_schema|registry_exposes|no_condition_window/)'`
 
-- [ ] **T06 BreakoutRetest boundary tests** · sonnet
+- [ ] **T06 BreakoutRetest boundary tests** · flash-high
   - Goal: 10 boundary tests; fix the condition only if one fails.
   - Files: `tests/strategies_conditions.rs`, `src/strategies/conditions/breakout_retest.rs`
   - Tests: `breakout_retest_tolerance_exactly_1_5_pct`, `..._candle_change_exactly_25_pct`, `..._23_candles_is_err`, `..._24_candles_ok`, `..._forming_candle_excluded`, `..._stale_series_is_err`, `..._no_retest_touch_false`, `..._close_below_level_false`, `..._higher_low_required`, `..._retest_window_expired_false` (SPEC test 2).
@@ -68,12 +68,12 @@ Manual gate (you): merge F1+F2 to `fork/main`, CI build, deploy, exit-A TOML + 4
   - Files: `src/config/schemas/trader.rs`, `locales/en/config.ftl`
   - Tests: `metadata_catalog_tests`, trader defaults test.
 
-- [ ] **T09 Sizing + slot math (pure)** · opus
+- [ ] **T09 Sizing + slot math (pure)** · claude
   - Goal: `src/fork/balance.rs`: `dynamic_trade_size(balance_sol, &cfg) -> Result<f64>` (10%, clamped floor..ceiling, Err on NaN/≤0/unknown balance) and `slot_cap(balance_sol, sol_usd: Option<f64>, &cfg) -> usize` (≥ $40 → 3, missing/NaN price → base cap).
   - Files: `src/fork/balance.rs`, `src/fork/mod.rs`
   - Tests (inline): `size_floor_applies`, `size_ceiling_applies`, `size_nan_balance_err`, `slot_flip_exactly_40_usd`, `slot_below_40_usd_is_2`, `missing_price_gives_2_slots`.
 
-- [ ] **T10 Wire sizing into trader + semaphore** 🔒 if the balance cache lives under `src/wallets` · opus
+- [ ] **T10 Wire sizing into trader + semaphore** 🔒 if the balance cache lives under `src/wallets` · claude
   - Goal: `get_trade_size_native()` / `get_max_open_positions()` use T09 when enabled, reading a cached SOL balance (no new RPC); capacity check uses `slot_cap`; `GLOBAL_POSITION_SEMAPHORE` sized at `max(max_open_positions, third_slot_max_positions)` when enabled so 3 slots need no restart.
   - Files: `src/trader/config.rs`, `src/trader/safety/limits.rs`, `src/positions/state.rs`, `tests/trading.rs`
   - Tests: `dynamic_size_off_uses_trade_size_sol`, `dynamic_size_on_uses_balance`, `capacity_check_allows_third_slot_above_40`, `semaphore_sized_for_third_slot` (SPEC test 3, F3 part). Then fresh-session review (SPEC test 7).
@@ -81,21 +81,21 @@ Manual gate (you): merge F1+F2 to `fork/main`, CI build, deploy, exit-A TOML + 4
 ## Day 2 — score, runner-only trail, option to switch to exit B
 
 ### F4 CandidateScore + Telegram
-- [ ] **T11 Score function (pure)** · opus
+- [ ] **T11 Score function (pure)** · claude
   - Goal: `src/fork/score.rs`: `score(&ScoreInputs) -> ScoreBreakdown` (chart quality from retest geometry, buyers from buy/sell counts + ratio, liquidity from `liquidity_sol`, minus capped AI penalty, clamped 0..=100). Missing input → Err.
   - Files: `src/fork/score.rs`, `src/fork/mod.rs`
   - Tests (inline): `score_clamped_0_100`, `ai_penalty_only_subtracts`, `no_ai_verdict_penalty_zero`, `missing_input_err`, `nan_inputs_err`.
 
-- [ ] **T12 CandidateScore condition** · opus
+- [ ] **T12 CandidateScore condition** · split like T05a/T05: T12a evaluator · claude, T12 registration (mod.rs, .ftl, fixture, listing tests) · flash
   - Goal: ENTRY condition `CandidateScore {min_score}` calling T11; true iff score ≥ min_score.
   - Files: `src/strategies/conditions/candidate_score.rs`, `src/strategies/conditions/mod.rs`, `locales/en/strategies.ftl`, `tools/tests/fixtures/dashboard/trader/strategies_condition_schemas.json`
   - Tests: `cargo nextest run -E 'test(/catalog|condition_schema/)'`
 
-- [ ] **T13 CandidateScore tests** · sonnet
+- [ ] **T13 CandidateScore tests** · flash-high
   - Files: `tests/strategies_conditions.rs`
   - Tests: `candidate_score_exactly_min_passes`, `candidate_score_below_min_false`, `candidate_score_missing_data_err`, `candidate_score_ai_cannot_raise`.
 
-- [ ] **T14 Score line on "position opened"** · sonnet
+- [ ] **T14 Score line on "position opened"** · flash
   - Goal: `msg_position_opened` gets an optional score breakdown and prints one `Score NN/100 (chart a · buyers b · liq c · ai −d)` line; absent → no line.
   - Files: `src/telegram/messages.rs`, `src/telegram/notifier.rs` (+ the trader call site if it must pass the score; name it in tasks/T14.md, ≤ 4 total)
   - Tests: `position_opened_with_score_line`, `position_opened_without_score_unchanged`.
@@ -106,7 +106,7 @@ Manual gate (you): merge F1+F2 to `fork/main`, CI build, deploy, exit-A TOML + 4
   - Files: `src/config/schemas/trader.rs`, `locales/en/config.ftl`
   - Tests: `metadata_catalog_tests`, trader defaults test.
 
-- [ ] **T16 Runner-only trail logic** · opus
+- [ ] **T16 Runner-only trail logic** · claude
   - Goal: when on, the trail is skipped until every ladder step has filled, then arms at the last rung's fill price with peak reset; stop loss keeps precedence; trail and TP can never sell the same tokens in one tick.
   - Files: `src/trader/policy.rs`, `src/trader/evaluators/exit_rules.rs`, `tests/trader_exits.rs`
   - Tests: `runner_trail_silent_before_last_rung`, `runner_trail_arms_at_last_rung_with_peak_reset`, `runner_trail_stop_loss_still_first`, `runner_trail_no_double_sell_same_tick`, `runner_trail_off_matches_upstream` (SPEC test 3, F5 part). Then fresh-session review of T10 + T16 (SPEC test 7).
