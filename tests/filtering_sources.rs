@@ -1815,3 +1815,408 @@ fn llm_analysis_rejections_with_different_details_are_distinct_values() {
     assert_ne!(first, second);
     assert_eq!(first.label(), second.label());
 }
+
+// ============================================================================
+// HOLDER GATE (F1)
+// ============================================================================
+
+use screenerbot::chains::{AccountId, AssetId, ChainId, PoolId};
+use screenerbot::fork::holder_gate::PoolContext;
+use screenerbot::pools::types::{PoolDescriptor, ProtocolId};
+use screenerbot::tokens::types::TokenHolder;
+
+fn gate_config() -> RugCheckFilters {
+    RugCheckFilters {
+        holder_gate_enabled: true,
+        holder_distribution_enabled: true,
+        min_unique_holders: 0,
+        max_top_holder_pct: 5.0,
+        max_top_3_holders_pct: 15.0,
+        max_top_10_holders_pct: 20.0,
+        insider_holder_checks_enabled: false,
+        ..RugCheckFilters::default()
+    }
+}
+
+fn live_holders(file: &str) -> Vec<TokenHolder> {
+    let path = format!(
+        "{}/tests/fixtures/filtering/{}",
+        env!("CARGO_MANIFEST_DIR"),
+        file
+    );
+    let content = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("failed to read fixture {file}: {e}"));
+    let json: serde_json::Value = serde_json::from_str(&content)
+        .unwrap_or_else(|e| panic!("failed to parse fixture {file}: {e}"));
+    let top_holders = json
+        .get("topHolders")
+        .and_then(|v| v.as_array())
+        .unwrap_or_else(|| panic!("fixture {file} missing topHolders array"));
+    top_holders
+        .iter()
+        .map(|entry| {
+            let address = entry["address"]
+                .as_str()
+                .unwrap_or_else(|| panic!("fixture {file} holder missing address"))
+                .to_owned();
+            let amount = if let Some(s) = entry["amount"].as_str() {
+                s.to_owned()
+            } else if let Some(n) = entry["amount"].as_u64() {
+                n.to_string()
+            } else if let Some(n) = entry["amount"].as_i64() {
+                n.to_string()
+            } else {
+                entry["amount"].to_string()
+            };
+            let pct = entry["pct"]
+                .as_f64()
+                .unwrap_or_else(|| panic!("fixture {file} holder missing pct"));
+            let owner = entry
+                .get("owner")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_owned());
+            let insider = entry["insider"].as_bool().unwrap_or(false);
+            TokenHolder {
+                address,
+                amount,
+                pct,
+                owner,
+                insider,
+            }
+        })
+        .collect()
+}
+
+fn pool(id: &str, reserves: &[&str]) -> PoolDescriptor {
+    PoolDescriptor {
+        pool_id: PoolId::new(ChainId::Solana, id).expect("valid pool id"),
+        program_kind: ProtocolId::new("TEST"),
+        base_mint: AssetId::new(
+            ChainId::Solana,
+            "BaseMint11111111111111111111111111111111111",
+        )
+        .expect("valid base mint"),
+        quote_mint: AssetId::new(
+            ChainId::Solana,
+            "QuoteMint1111111111111111111111111111111111",
+        )
+        .expect("valid quote mint"),
+        reserve_accounts: reserves
+            .iter()
+            .map(|&r| AccountId::new(ChainId::Solana, r).expect("valid account id"))
+            .collect(),
+        liquidity_usd: 0.0,
+        volume_h24_usd: 0.0,
+        last_updated: std::time::Instant::now(),
+    }
+}
+
+fn holders_token(holders: Vec<TokenHolder>) -> Token {
+    let mut token = dex_token();
+    token.top_holders = holders;
+    token
+}
+
+#[test]
+fn holder_gate_pumpswap_vault_excluded_via_owner() {
+    let holders = live_holders("rugcheck-pumpswap-top-holders.json");
+    // Hardcoded PumpSwap pool id: pump_fun_amm market pubkey from the live report.
+    let pool_id = "6dbFy11iEz64Hg8G67e1CodqYtEZRPLLNCameicuD2Qq";
+    let ctx = PoolContext::from_pools(&[pool(pool_id, &[])]);
+    let config = RugCheckFilters {
+        max_top_holder_pct: 3.0,
+        ..gate_config()
+    };
+    assert!(ctx.is_pool_holder(&holders[0]));
+    let token = holders_token(holders);
+    assert_eq!(rugcheck::evaluate_with_pools(&token, &config, &ctx), Ok(()));
+
+    let auth_ctx = PoolContext::with_known_authorities();
+    assert_eq!(
+        rejection(rugcheck::evaluate_with_pools(&token, &config, &auth_ctx)),
+        FilterRejectionReason::RugcheckTopHolderTooHigh
+    );
+}
+
+#[test]
+fn holder_gate_excludes_pool_account() {
+    let mut holders = vec![common::holder(
+        "VaultA1111111111111111111111111111111111111",
+        98.0,
+        false,
+    )];
+    for i in 0..10 {
+        holders.push(common::holder(&format!("User{:040}", i), 0.1, false));
+    }
+    let token = holders_token(holders);
+    let ctx = PoolContext::from_pools(&[pool(
+        "PoolA11111111111111111111111111111111111111",
+        &["VaultA1111111111111111111111111111111111111"],
+    )]);
+    let config = gate_config();
+    assert_eq!(rugcheck::evaluate_with_pools(&token, &config, &ctx), Ok(()));
+
+    let empty_ctx = PoolContext::default();
+    assert_eq!(
+        rejection(rugcheck::evaluate_with_pools(&token, &config, &empty_ctx)),
+        FilterRejectionReason::RugcheckTopHolderTooHigh
+    );
+}
+
+#[test]
+fn holder_gate_two_pools_both_excluded() {
+    let curve = pool(
+        "Curve1111111111111111111111111111111111111",
+        &["Curve1111111111111111111111111111111111111"],
+    );
+    let pumpswap = pool(
+        "Swap11111111111111111111111111111111111111",
+        &[
+            "SwapVaultBase111111111111111111111111111111",
+            "SwapVaultQuote11111111111111111111111111111",
+        ],
+    );
+    let ctx = PoolContext::from_pools(&[curve.clone(), pumpswap.clone()]);
+
+    let mut curve_holder =
+        common::holder("CurveAta1111111111111111111111111111111111", 60.0, false);
+    // UNVERIFIED: assumes RugCheck reports the curve PDA as owner
+    curve_holder.owner = Some("Curve1111111111111111111111111111111111111".to_string());
+
+    let mut swap_holder =
+        common::holder("SwapVaultBase111111111111111111111111111111", 30.0, false);
+    swap_holder.owner = Some("Swap11111111111111111111111111111111111111".to_string());
+
+    let mut holders = vec![curve_holder, swap_holder];
+    for i in 0..10 {
+        holders.push(common::holder(&format!("User{:040}", i), 0.5, false));
+    }
+    let token = holders_token(holders);
+    let config = gate_config();
+    assert_eq!(rugcheck::evaluate_with_pools(&token, &config, &ctx), Ok(()));
+
+    let swap_only_ctx = PoolContext::from_pools(&[pumpswap]);
+    assert_eq!(
+        rejection(rugcheck::evaluate_with_pools(
+            &token,
+            &config,
+            &swap_only_ctx
+        )),
+        FilterRejectionReason::RugcheckTopHolderTooHigh
+    );
+
+    let curve_only_ctx = PoolContext::from_pools(&[curve]);
+    assert_eq!(
+        rejection(rugcheck::evaluate_with_pools(
+            &token,
+            &config,
+            &curve_only_ctx
+        )),
+        FilterRejectionReason::RugcheckTopHolderTooHigh
+    );
+}
+
+#[test]
+fn holder_gate_all_holders_excluded_rejects_missing() {
+    let ctx = PoolContext::from_pools(&[pool(
+        "PoolA11111111111111111111111111111111111111",
+        &["VaultA1111111111111111111111111111111111111"],
+    )]);
+    let h1 = common::holder("VaultA1111111111111111111111111111111111111", 70.0, false);
+    let mut h2 = common::holder("RandomAddr1111111111111111111111111111111111", 30.0, false);
+    h2.owner = Some("PoolA11111111111111111111111111111111111111".to_string());
+    let token = holders_token(vec![h1, h2]);
+    let config = gate_config();
+    assert_eq!(
+        rejection(rugcheck::evaluate_with_pools(&token, &config, &ctx)),
+        FilterRejectionReason::RugcheckTopHoldersMissing
+    );
+}
+
+#[test]
+fn holder_gate_empty_list_rejects() {
+    let token = holders_token(vec![]);
+    let config = gate_config();
+    let ctx = PoolContext::default();
+    assert_eq!(
+        rejection(rugcheck::evaluate_with_pools(&token, &config, &ctx)),
+        FilterRejectionReason::RugcheckTopHoldersMissing
+    );
+}
+
+#[test]
+fn holder_gate_missing_pct_data_rejects() {
+    let token = holders_token(vec![
+        common::holder(
+            "User111111111111111111111111111111111111111",
+            f64::NAN,
+            false,
+        ),
+        common::holder(
+            "User222222222222222222222222222222222222222",
+            f64::INFINITY,
+            false,
+        ),
+        common::holder(
+            "User333333333333333333333333333333333333333",
+            f64::NEG_INFINITY,
+            false,
+        ),
+    ]);
+    let config = gate_config();
+    let ctx = PoolContext::default();
+    assert_eq!(
+        rejection(rugcheck::evaluate_with_pools(&token, &config, &ctx)),
+        FilterRejectionReason::RugcheckTopHoldersMissing
+    );
+}
+
+#[test]
+fn holder_gate_top10_exactly_20_passes() {
+    let holders = (0..10)
+        .map(|i| common::holder(&format!("User{:040}", i), 2.0, false))
+        .collect();
+    let token = holders_token(holders);
+    let config = gate_config();
+    let ctx = PoolContext::default();
+    assert_eq!(rugcheck::evaluate_with_pools(&token, &config, &ctx), Ok(()));
+}
+
+#[test]
+fn holder_gate_top10_above_20_rejects() {
+    let mut holders: Vec<TokenHolder> = (0..9)
+        .map(|i| common::holder(&format!("User{:040}", i), 2.0, false))
+        .collect();
+    holders.push(common::holder(
+        "UserWhale1111111111111111111111111111111111",
+        2.01,
+        false,
+    ));
+    let token = holders_token(holders);
+    let config = gate_config();
+    let ctx = PoolContext::default();
+    assert_eq!(
+        rejection(rugcheck::evaluate_with_pools(&token, &config, &ctx)),
+        FilterRejectionReason::RugcheckTop10HoldersTooHigh
+    );
+
+    let bonk_holders = live_holders("rugcheck-bonk-top-holders.json");
+    let bonk_token = holders_token(bonk_holders);
+    let bonk_config = RugCheckFilters {
+        max_top_holder_pct: 50.0,
+        max_top_3_holders_pct: 50.0,
+        ..gate_config()
+    };
+    assert_eq!(
+        rejection(rugcheck::evaluate_with_pools(
+            &bonk_token,
+            &bonk_config,
+            &ctx
+        )),
+        FilterRejectionReason::RugcheckTop10HoldersTooHigh
+    );
+}
+
+#[test]
+fn holder_gate_bonk_plain_wallets_counted() {
+    let holders = live_holders("rugcheck-bonk-top-holders.json");
+    let ctx = PoolContext::with_known_authorities();
+    for h in &holders {
+        assert!(!ctx.is_pool_holder(h));
+    }
+    let token = holders_token(holders);
+    let config = gate_config();
+    assert_eq!(
+        rejection(rugcheck::evaluate_with_pools(&token, &config, &ctx)),
+        FilterRejectionReason::RugcheckTopHolderTooHigh
+    );
+}
+
+#[test]
+fn holder_gate_nan_limit_rejects() {
+    let holders = (0..10)
+        .map(|i| common::holder(&format!("User{:040}", i), 1.0, false))
+        .collect();
+    let token = holders_token(holders);
+    let config = RugCheckFilters {
+        max_top_10_holders_pct: f64::NAN,
+        ..gate_config()
+    };
+    let ctx = PoolContext::default();
+    assert_eq!(
+        rejection(rugcheck::evaluate_with_pools(&token, &config, &ctx)),
+        FilterRejectionReason::RugcheckTop10HoldersTooHigh
+    );
+}
+
+#[test]
+fn holder_gate_off_matches_upstream() {
+    let off = RugCheckFilters {
+        holder_gate_enabled: false,
+        ..gate_config()
+    };
+    let rich_ctx = PoolContext::from_pools(&[
+        pool("6dbFy11iEz64Hg8G67e1CodqYtEZRPLLNCameicuD2Qq", &[]),
+        pool(
+            "PoolA11111111111111111111111111111111111111",
+            &["VaultA1111111111111111111111111111111111111"],
+        ),
+    ]);
+
+    let empty_token = holders_token(vec![]);
+
+    let mut test2_holders = vec![common::holder(
+        "VaultA1111111111111111111111111111111111111",
+        98.0,
+        false,
+    )];
+    for i in 0..10 {
+        test2_holders.push(common::holder(&format!("User{:040}", i), 0.1, false));
+    }
+    let test2_token = holders_token(test2_holders);
+
+    let pumpswap_token = holders_token(live_holders("rugcheck-pumpswap-top-holders.json"));
+    let bonk_token = holders_token(live_holders("rugcheck-bonk-top-holders.json"));
+
+    let nan_token = holders_token(vec![
+        common::holder(
+            "User111111111111111111111111111111111111111",
+            f64::NAN,
+            false,
+        ),
+        common::holder(
+            "User222222222222222222222222222222222222222",
+            f64::INFINITY,
+            false,
+        ),
+        common::holder(
+            "User333333333333333333333333333333333333333",
+            f64::NEG_INFINITY,
+            false,
+        ),
+    ]);
+
+    for t in [
+        &empty_token,
+        &test2_token,
+        &pumpswap_token,
+        &bonk_token,
+        &nan_token,
+    ] {
+        let res_rich = rugcheck::evaluate_with_pools(t, &off, &rich_ctx);
+        let res_upstream = rugcheck::evaluate(t, &off);
+        let res_default = rugcheck::evaluate_with_pools(t, &off, &PoolContext::default());
+        assert_eq!(res_rich, res_upstream);
+        assert_eq!(res_rich, res_default);
+    }
+
+    assert_eq!(rugcheck::evaluate(&empty_token, &off), Ok(()));
+    assert_eq!(
+        rejection(rugcheck::evaluate(&test2_token, &off)),
+        FilterRejectionReason::RugcheckTopHolderTooHigh
+    );
+    assert_eq!(
+        rejection(rugcheck::evaluate(&bonk_token, &off)),
+        FilterRejectionReason::RugcheckTopHolderTooHigh
+    );
+}

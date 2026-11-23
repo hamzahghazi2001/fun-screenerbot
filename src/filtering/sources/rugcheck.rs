@@ -8,6 +8,7 @@ use crate::config::schemas::RugCheckFilters;
 use crate::config::FilteringConfig;
 use crate::filtering::sources::FilterRejectionReason;
 use crate::filtering::stage::{FilterStage, StageEval};
+use crate::fork::holder_gate::{self, PoolContext};
 use crate::tokens::types::{SecurityRisk, Token};
 
 /// The Rugcheck stage, applicable only on a chain Rugcheck publishes reports for. It owns
@@ -26,11 +27,11 @@ impl FilterStage for RugcheckStage {
 
     fn evaluate<'a>(
         &'a self,
-        _chain: ChainId,
+        chain: ChainId,
         token: &'a Token,
         config: &'a FilteringConfig,
     ) -> StageEval<'a> {
-        StageEval::Ready(evaluate_stage(token, config).into())
+        StageEval::Ready(evaluate_stage(chain, token, config).into())
     }
 }
 
@@ -62,18 +63,40 @@ pub fn report_required(chain: ChainId) -> bool {
 /// With the RugCheck stage on, a token without a report never passes: the engine counts
 /// it as awaiting its report. With the stage off nothing about RugCheck is required, the
 /// report included.
-fn evaluate_stage(token: &Token, config: &FilteringConfig) -> Result<(), FilterRejectionReason> {
+fn evaluate_stage(
+    chain: ChainId,
+    token: &Token,
+    config: &FilteringConfig,
+) -> Result<(), FilterRejectionReason> {
     if !config.rugcheck.enabled {
         return Ok(());
     }
     if !has_rugcheck_report(token) {
         return Err(FilterRejectionReason::RugcheckDataMissing);
     }
-    evaluate(token, &config.rugcheck)
+    // FORK: holder gate (F1). Pool accounts come from the bot's own pool decoders; the lookup
+    // runs only with the gate on, so the gate-off path stays exactly upstream.
+    let pools =
+        if config.rugcheck.holder_gate_enabled && config.rugcheck.holder_distribution_enabled {
+            PoolContext::from_pools(&crate::pools::token_pools(chain, &token.mint))
+        } else {
+            PoolContext::default()
+        };
+    evaluate_with_pools(token, &config.rugcheck, &pools)
 }
 
 /// Evaluate a token against rugcheck filter criteria.
+// FORK: does no pool lookup.
 pub fn evaluate(token: &Token, config: &RugCheckFilters) -> Result<(), FilterRejectionReason> {
+    evaluate_with_pools(token, config, &PoolContext::with_known_authorities())
+}
+
+/// Evaluate a token against rugcheck filter criteria.
+pub fn evaluate_with_pools(
+    token: &Token,
+    config: &RugCheckFilters,
+    pools: &PoolContext,
+) -> Result<(), FilterRejectionReason> {
     if !config.enabled {
         return Ok(());
     }
@@ -110,7 +133,7 @@ pub fn evaluate(token: &Token, config: &RugCheckFilters) -> Result<(), FilterRej
         }
     }
 
-    if let Some(reason) = check_holder_distribution(token, config) {
+    if let Some(reason) = check_holder_distribution(token, config, pools) {
         return Err(reason);
     }
 
@@ -202,6 +225,7 @@ pub fn evaluate(token: &Token, config: &RugCheckFilters) -> Result<(), FilterRej
 fn check_holder_distribution(
     token: &Token,
     config: &RugCheckFilters,
+    pools: &PoolContext,
 ) -> Option<FilterRejectionReason> {
     if !config.holder_distribution_enabled {
         return None;
@@ -217,6 +241,11 @@ fn check_holder_distribution(
             }
             Some(_) => {}
         }
+    }
+
+    // FORK: holder gate (F1)
+    if config.holder_gate_enabled {
+        return check_ordinary_holders(token, config, pools);
     }
 
     // Only the three largest stakes matter, so select them in one pass instead of cloning
@@ -238,6 +267,42 @@ fn check_holder_distribution(
     }
 
     None
+}
+
+// FORK: holder gate (F1). Top-1/3/10 on ordinary holders only. An empty list, or a list with no ordinary
+// holder left (all pool accounts or non-finite pct), is missing data and rejects. An account the classifier
+// cannot place is kept and counted, which errs toward rejecting.
+fn check_ordinary_holders(
+    token: &Token,
+    config: &RugCheckFilters,
+    pools: &PoolContext,
+) -> Option<FilterRejectionReason> {
+    if token.top_holders.is_empty() {
+        return Some(FilterRejectionReason::RugcheckTopHoldersMissing);
+    }
+    let ordinary = holder_gate::ordinary_holders(&token.top_holders, pools);
+    let (Some(top1), Some(top3), Some(top10)) = (
+        holder_gate::top_n_sum(&ordinary, 1),
+        holder_gate::top_n_sum(&ordinary, 3),
+        holder_gate::top_n_sum(&ordinary, 10),
+    ) else {
+        return Some(FilterRejectionReason::RugcheckTopHoldersMissing);
+    };
+    if exceeds(top1, config.max_top_holder_pct) {
+        return Some(FilterRejectionReason::RugcheckTopHolderTooHigh);
+    }
+    if exceeds(top3, config.max_top_3_holders_pct) {
+        return Some(FilterRejectionReason::RugcheckTop3HoldersTooHigh);
+    }
+    if exceeds(top10, config.max_top_10_holders_pct) {
+        return Some(FilterRejectionReason::RugcheckTop10HoldersTooHigh);
+    }
+    None
+}
+
+/// FORK: strict `>`, the same as upstream (a value equal to the limit passes). A NaN limit rejects.
+fn exceeds(sum: f64, limit: f64) -> bool {
+    limit.is_nan() || sum > limit
 }
 
 /// The three largest holder percentages, descending, `None` where there is no such holder.
