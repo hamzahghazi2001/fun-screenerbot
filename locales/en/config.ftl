@@ -1393,3 +1393,11 @@ config-impact-critical = critical
 config-impact-high = high
 config-impact-low = low
 config-impact-medium = medium
+
+# FORK: holder gate (F1)
+config-filtering-rugcheck-holder-gate-enabled = Enable Holder Gate
+    .hint = Exclude pool/LP vault holders, add a top-10 limit, and reject tokens with no holder list
+config-filtering-rugcheck-max-top-10-holders-pct = Max Top 10 Holders
+    .hint = Combined max for the 10 largest ordinary (non-pool) holders; used only when the holder gate is on
+    .unit = %
+

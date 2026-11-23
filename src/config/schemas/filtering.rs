@@ -644,6 +644,21 @@ config_struct! {
             category: ConfigCategory::TransferFees,
         })]
         block_transfer_fee_tokens: bool = false,
+        // FORK: holder gate (F1). Off = upstream behaviour.
+        #[metadata(field_metadata! {
+            impact: ConfigImpact::Critical,
+            category: ConfigCategory::HolderDistribution,
+        })]
+        holder_gate_enabled: bool = false,
+        // FORK: holder gate (F1). Read only when holder_gate_enabled.
+        #[metadata(field_metadata! {
+            min: 0,
+            max: 100,
+            step: 1,
+            impact: ConfigImpact::High,
+            category: ConfigCategory::HolderDistribution,
+        })]
+        max_top_10_holders_pct: f64 = 20.0,
     }
 }
 
@@ -845,5 +860,13 @@ mod tests {
     #[test]
     fn the_shipped_defaults_pass_config_validation() {
         validate_config(&Config::default()).expect("a new install starts from a valid config");
+    }
+
+    // FORK: holder gate defaults (F1)
+    #[test]
+    fn fork_holder_gate_defaults_off() {
+        let rugcheck = FilteringConfig::default().rugcheck;
+        assert!(!rugcheck.holder_gate_enabled);
+        assert_eq!(rugcheck.max_top_10_holders_pct, 20.0);
     }
 }
