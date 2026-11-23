@@ -11,5 +11,6 @@ Models for agy (pass as the 2nd argument):
 - claude-opus-4-6-thinking: holder check, sizing, score, exits, anything in src/chains/solana/swaps
 - claude-sonnet-4-6: normal feature work, new conditions, tests
 - gemini-3.8-flash-medium: config fields, .ftl strings, fixtures, docs
+- gemini-3.8-flash-high: fallback; if agy returns a 429, rerun that task with this model
 Stop and ask me before committing anything under src/chains/solana/swaps or src/wallets.
 Keep context small: never open whole large files; /clear between tasks.
