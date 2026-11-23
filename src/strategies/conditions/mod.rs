@@ -299,6 +299,7 @@ impl ConditionRegistry {
         registry.register(Box::new(PositionAddsCondition));
         registry.register(Box::new(TimeOfDayCondition));
         registry.register(Box::new(LiquidityChangeSinceEntryCondition));
+        registry.register(Box::new(BreakoutRetestCondition)); // FORK: F2
 
         registry
     }

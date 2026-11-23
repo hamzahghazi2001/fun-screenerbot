@@ -481,6 +481,19 @@ strategies-condition-bollinger-bands-param-signal-option-squeeze = Squeeze
 strategies-condition-bollinger-bands-param-squeeze-width-pct = Squeeze Width %
     .description = For a squeeze: the most the distance between the bands may be, as a percentage of the average
 
+strategies-condition-breakout-retest = Breakout Retest
+    .description = Enter after a closed candle breaks above the prior resistance, then price pulls back to that level and holds it. Closed candles only; the forming candle is ignored.
+strategies-condition-breakout-retest-param-resistance-lookback = Resistance Lookback
+    .description = Candles before the breakout whose highest high is the resistance level
+strategies-condition-breakout-retest-param-retest-window = Retest Window
+    .description = The breakout must be at most this many closed candles old, and the retest happens after it
+strategies-condition-breakout-retest-param-retest-tolerance-pct = Retest Tolerance %
+    .description = How close to the broken level a retest low must come, and how far below it any close may sit
+strategies-condition-breakout-retest-param-max-candle-change-pct = Max Candle Move %
+    .description = Reject when any candle from the breakout on moves more than this, open to close or low to high
+strategies-condition-breakout-retest-param-require-higher-low = Require Higher Low
+    .description = The retest low must stay above the lowest low of the lookback and breakout candles
+
 strategies-condition-liquidity-to-size = Liquidity to Size
     .description = Fires when the pool's reserves are at least or below a multiple of the size at stake: the trade size before a buy, the position's remaining value while it is held.
 strategies-condition-liquidity-to-size-param-comparison = Comparison

@@ -1005,7 +1005,7 @@ fn every_schema_declares_the_strategy_types_it_applies_to() {
         "PositionAdds",
         "LiquidityChangeSinceEntry",
     ];
-    let entry_only = ["TokenAge"];
+    let entry_only = ["BreakoutRetest", "TokenAge"];
     for (name, schema) in schemas.as_object().expect("schemas are an object") {
         let expected = if exit_only.contains(&name.as_str()) {
             json!(["EXIT"])
@@ -1343,6 +1343,7 @@ fn the_registry_exposes_every_built_in_condition() {
         types,
         vec![
             "BollingerBands",
+            "BreakoutRetest",
             "BuyPressure",
             "CandleSize",
             "ConsecutiveCandles",
@@ -1375,7 +1376,7 @@ fn every_registered_condition_publishes_a_parameter_schema() {
     let engine = uncached_engine();
     let schemas = engine.get_condition_registry().get_all_schemas();
     let object = schemas.as_object().expect("schemas are an object");
-    assert_eq!(object.len(), 24);
+    assert_eq!(object.len(), 25); // FORK: F2 BreakoutRetest
     for (name, schema) in object {
         assert!(
             schema.get("parameters").is_some(),

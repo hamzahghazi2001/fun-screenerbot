@@ -45,7 +45,7 @@ Gate before T03 spec: read Explore Mode rejection reasons — does `max_top_hold
   - Files: `src/strategies/conditions/breakout_retest.rs`, `src/strategies/conditions/mod.rs` (mod + pub use), `src/strategies/error_text.rs`, `locales/en/strategies.ftl` (error labels)
   - Tests: inline `breakout_retest_*`, `error_text` tests.
 
-- [ ] **T05 Register BreakoutRetest** · flash · 5 files (owner-approved: registration breaks two listing tests unless they change together)
+- [x] **T05 Register BreakoutRetest** · flash · 5 files (owner-approved: registration breaks two listing tests unless they change together)
   - Files: `src/strategies/conditions/mod.rs`, `locales/en/strategies.ftl`, `tools/tests/fixtures/dashboard/trader/strategies_condition_schemas.json`, `tests/strategies_engine.rs`, `tests/strategies_conditions.rs`
   - Tests: `cargo nextest run -E 'test(/catalog|condition_schema|registry_exposes|no_condition_window/)'`
 

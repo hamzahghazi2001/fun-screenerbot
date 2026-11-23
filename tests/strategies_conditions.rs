@@ -3143,6 +3143,8 @@ fn every_condition_reports_the_type_name_it_is_registered_under() {
 /// evaluation reads beyond the parameter's own value at the other parameters' maxima.
 const CANDLE_WINDOW_PARAMETERS: &[(&str, &str, usize)] = &[
     ("BollingerBands", "period", 0),
+    ("BreakoutRetest", "resistance_lookback", 14),
+    ("BreakoutRetest", "retest_window", 52),
     ("ConsecutiveCandles", "count", 0),
     ("MaCross", "fast_period", 0),
     ("MaCross", "slow_period", 20),
