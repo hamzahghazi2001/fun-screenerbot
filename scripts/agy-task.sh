@@ -4,14 +4,19 @@
 set -euo pipefail
 id="$1"; out=".agy-out/$id.json"; mkdir -p .agy-out
 common=(--sandbox --output-format json --print-timeout 30m)
+rule="Run only the named tests, never the full suite, never use BypassSandbox."
 if [ "${2:-}" = "--fix" ]; then
   conv=$(jq -r .conversation_id "$out")
-  agy -p "$3" --conversation "$conv" "${common[@]}" > "$out"
+  agy -p "$3
+
+$rule" --conversation "$conv" "${common[@]}" > "$out"
 else
   args=("${common[@]}")
   if [ -n "${2:-}" ]; then args+=(--model "$2"); fi
   agy -p "Read AGENTS.md first. Then do this task exactly:
-$(cat "tasks/$id.md")" "${args[@]}" > "$out"
+$(cat "tasks/$id.md")
+
+$rule" "${args[@]}" > "$out"
 fi
 jq -r '"status: \(.status)", .response' "$out" | tail -n 40
 git diff --stat

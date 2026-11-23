@@ -13,6 +13,8 @@ a) agy, Gemini only:
    - gemini-3.8-flash-medium: tasks that only add config fields, locale text (.ftl), condition
      registration, fixtures, the Telegram score line, CI or docs
    - gemini-3.8-flash-high: other logic tasks that are not Claude's (boundary/behaviour tests)
+   scripts/agy-task.sh ends every prompt (new run and --fix) with the named-tests-only /
+   no-BypassSandbox line; task files and --fix messages need not repeat it.
    The reviewer (Claude) runs the full suite before committing.
 b) Claude writes the code itself, with Sonnet-level effort, only for the money logic:
    dynamic sizing calculation and its wiring (T09, T10), CandidateScore evaluation (T11, T12a),
