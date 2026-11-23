@@ -28,7 +28,7 @@ Gate before T03 spec: read Explore Mode rejection reasons — does `max_top_hold
   - Files: `src/filtering/sources/rejection.rs`, `src/filtering/sources/mod.rs`, `locales/en/filtering.ftl`
   - Tests: `cargo nextest run -E 'test(/rejection|filtering_sources/)'`
 
-- [ ] **T03 Pool-holder classifier (pure)** · opus
+- [x] **T03 Pool-holder classifier (pure)** · opus
   - Goal: new `src/fork/holder_gate.rs`: `ordinary_holders(&[TokenHolder], &PoolContext) -> Vec<&TokenHolder>` excluding holders whose `owner`/`address` is a known AMM/LP authority or a pool vault of the token; `top_n_sum(.., n)` with the NaN rules of `three_largest_pcts`. Creates the `src/fork` module.
   - Files: `src/fork/holder_gate.rs`, `src/fork/mod.rs`, `src/lib.rs` (one `// FORK:` mod line)
   - Tests (inline `#[cfg(test)]`): `pool_vault_excluded`, `amm_authority_owner_excluded`, `ordinary_holder_kept`, `nan_pct_dropped`, `top10_sum_with_fewer_than_10_holders`.

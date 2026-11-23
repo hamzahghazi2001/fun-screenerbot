@@ -28,6 +28,7 @@ pub mod errors;
 pub mod events;
 pub mod features;
 pub mod filtering;
+pub mod fork; // FORK: personal-fork features (src/fork)
 pub mod global;
 pub mod i18n;
 pub mod llm_analysis;
