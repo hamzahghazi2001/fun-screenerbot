@@ -86,3 +86,4 @@ _backup/
 /docs/
 
 # Frontend validation and formatting configs are versioned with package.json.
+.agy-out/

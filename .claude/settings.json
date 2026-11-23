@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(scripts/agy-task.sh *)",
+      "Bash(git diff *)", "Bash(git status)", "Bash(git log *)",
+      "Bash(git add *)", "Bash(git commit *)",
+      "Bash(cargo nextest run *)", "Bash(cargo clippy *)", "Bash(jq *)",
+      "Edit(/tasks/**)", "Edit(/docs/**)"
+    ],
+    "deny": [
+      "Edit(/src/**)", "Edit(/tests/**)", "Edit(/locales/**)", "Edit(/Cargo.toml)",
+      "Bash(git push *)", "Bash(cargo run *)", "Bash(screenerbot*)"
+    ]
+  }
+}
