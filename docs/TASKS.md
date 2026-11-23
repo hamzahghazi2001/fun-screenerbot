@@ -37,6 +37,7 @@ Gate before T03 spec: read Explore Mode rejection reasons — does `max_top_hold
   - Goal: in `check_holder_distribution`, when `holder_gate_enabled`: empty list → `RugcheckTopHoldersMissing`; top-1/top-3 on ordinary holders; top-10 sum `>` `max_top_10_holders_pct` → `RugcheckTop10HoldersTooHigh`. Gate off ⇒ byte-for-byte upstream behaviour.
   - Files: `src/filtering/sources/rugcheck.rs`, `tests/filtering_sources.rs`
   - Tests: `holder_gate_excludes_pool_account`, `holder_gate_top10_exactly_20_passes`, `holder_gate_top10_above_20_rejects`, `holder_gate_empty_list_rejects`, `holder_gate_off_matches_upstream` (SPEC test 3, F1 part).
+- [ ] **T04b (deferred): include RugCheck markets[].pubkey as pool accounts**, split into T04b-1 (TokenHolder pool_market field plus test literals) and T04b-2 (parse markets, gate, tests). Build only if live data shows many-pool tokens being over-rejected. Notes: curve1.json is the PUMP token with 442 markets and cannot back a real-vault test; use synthetic holders if built.
 
 ### F2 BreakoutRetest
 - [ ] **T05 BreakoutRetest condition** · sonnet
