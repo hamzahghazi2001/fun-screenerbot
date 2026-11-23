@@ -83,6 +83,9 @@ filtering-reject-rug-lp-providers-low = LP providers too low
 filtering-reject-rug-lp-providers-missing = LP providers missing
 filtering-reject-rug-lp-lock-low = LP lock too low
 filtering-reject-rug-lp-lock-missing = LP lock missing
+# FORK: holder gate (F1)
+filtering-reject-rug-top10-holders = Top 10 holders % too high
+filtering-reject-rug-top-holders-missing = Top holder list missing
 filtering-reject-llm-analysis-rejected = LLM Analysis Rejected: { $reason } ({ $confidence }% conf, { $provider })
 filtering-reject-llm-analysis-rejected-generic = LLM Analysis Rejected
 filtering-reject-unknown = { $code }

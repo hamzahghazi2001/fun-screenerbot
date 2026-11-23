@@ -126,7 +126,10 @@ impl FilterRejectionReason {
             | FilterRejectionReason::RugcheckLpProvidersTooLow
             | FilterRejectionReason::RugcheckLpProvidersMissing
             | FilterRejectionReason::RugcheckLpLockTooLow
-            | FilterRejectionReason::RugcheckLpLockMissing => FilterSource::Rugcheck,
+            | FilterRejectionReason::RugcheckLpLockMissing
+            // FORK: holder gate (F1)
+            | FilterRejectionReason::RugcheckTop10HoldersTooHigh
+            | FilterRejectionReason::RugcheckTopHoldersMissing => FilterSource::Rugcheck,
         }
     }
 }

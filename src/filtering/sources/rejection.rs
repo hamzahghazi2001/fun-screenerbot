@@ -152,6 +152,9 @@ rejection_table! {
         RugcheckLpProvidersMissing => ("rug_lp_providers_missing", ids::FILTERING_REJECT_RUG_LP_PROVIDERS_MISSING),
         RugcheckLpLockTooLow => ("rug_lp_lock_low", ids::FILTERING_REJECT_RUG_LP_LOCK_LOW),
         RugcheckLpLockMissing => ("rug_lp_lock_missing", ids::FILTERING_REJECT_RUG_LP_LOCK_MISSING),
+        // FORK: holder gate (F1)
+        RugcheckTop10HoldersTooHigh => ("rug_top10_holders", ids::FILTERING_REJECT_RUG_TOP10_HOLDERS),
+        RugcheckTopHoldersMissing => ("rug_top_holders_missing", ids::FILTERING_REJECT_RUG_TOP_HOLDERS_MISSING),
 }
 
 /// Codes that no current variant emits. They appear only in stored rows
