@@ -49,7 +49,7 @@ Gate before T03 spec: read Explore Mode rejection reasons — does `max_top_hold
   - Files: `src/strategies/conditions/mod.rs`, `locales/en/strategies.ftl`, `tools/tests/fixtures/dashboard/trader/strategies_condition_schemas.json`, `tests/strategies_engine.rs`, `tests/strategies_conditions.rs`
   - Tests: `cargo nextest run -E 'test(/catalog|condition_schema|registry_exposes|no_condition_window/)'`
 
-- [ ] **T06 BreakoutRetest boundary tests** · flash-high
+- [x] **T06 BreakoutRetest boundary tests** · flash-high (T05a tests 9-12 covered only 3 of 10; added all 10 via the public evaluate path, no condition change)
   - Goal: 10 boundary tests; fix the condition only if one fails.
   - Files: `tests/strategies_conditions.rs`, `src/strategies/conditions/breakout_retest.rs`
   - Tests: `breakout_retest_tolerance_exactly_1_5_pct`, `..._candle_change_exactly_25_pct`, `..._23_candles_is_err`, `..._24_candles_ok`, `..._forming_candle_excluded`, `..._stale_series_is_err`, `..._no_retest_touch_false`, `..._close_below_level_false`, `..._higher_low_required`, `..._retest_window_expired_false` (SPEC test 2).

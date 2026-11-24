@@ -16,8 +16,8 @@ use common::{
     anchor_ts, bundle_with, candle, candle_series, condition, context_bare, context_with_candles,
 };
 use screenerbot::strategies::conditions::{
-    get_current_price, usable_basis, BollingerBandsCondition, BuyPressureCondition,
-    CandleSizeCondition, ConditionEvaluator, ConsecutiveCandlesCondition,
+    get_current_price, usable_basis, BollingerBandsCondition, BreakoutRetestCondition,
+    BuyPressureCondition, CandleSizeCondition, ConditionEvaluator, ConsecutiveCandlesCondition,
     DrawdownFromPeakCondition, LiquidityChangeSinceEntryCondition, LiquidityLevelCondition,
     LiquidityToSizeCondition, MaCrossCondition, PositionAddsCondition,
     PositionHoldingTimeCondition, PositionProfitCondition, PriceBreakoutCondition,
@@ -675,6 +675,344 @@ async fn breakout_errors_without_enough_history() {
             }
         ),
         "unexpected error: {err}"
+    );
+}
+
+// ==================== BreakoutRetest ====================
+
+const BR_STEP: i64 = 5 * MINUTE;
+
+/// BreakoutRetest with every parameter set (read_params requires all of them).
+fn retest_cond(
+    retest_window: i64,
+    tolerance_pct: f64,
+    max_change_pct: f64,
+    higher_low: bool,
+) -> Condition {
+    condition(
+        "BreakoutRetest",
+        &[
+            ("timeframe", json!("5m")),
+            ("resistance_lookback", json!(24)),
+            ("retest_window", json!(retest_window)),
+            ("retest_tolerance_pct", json!(tolerance_pct)),
+            ("max_candle_change_pct", json!(max_change_pct)),
+            ("require_higher_low", json!(higher_low)),
+        ],
+    )
+}
+fn default_retest() -> Condition {
+    retest_cond(12, 1.5, 25.0, true)
+}
+
+/// OHLC rows (o, h, l, c) for L=24, W=12: rows 0..=23 (99,100,98,99); row 24 breakout (100,104,100,103);
+/// rows 25..=36 retest (101,102,100.5,101). Level = 100, band 98.5..101.5, base low 98.
+fn br_rows() -> Vec<(f64, f64, f64, f64)> {
+    let mut rows = Vec::with_capacity(37);
+    for _ in 0..24 {
+        rows.push((99.0, 100.0, 98.0, 99.0));
+    }
+    rows.push((100.0, 104.0, 100.0, 103.0));
+    for _ in 25..=36 {
+        rows.push((101.0, 102.0, 100.5, 101.0));
+    }
+    rows
+}
+
+/// Candles from rows, spaced BR_STEP, the last row at `newest_ts`, volume 1.0 (use common::candle).
+fn br_candles(rows: &[(f64, f64, f64, f64)], newest_ts: i64) -> Vec<screenerbot::ohlcvs::Candle> {
+    let n = rows.len() as i64;
+    rows.iter()
+        .enumerate()
+        .map(|(i, &(o, h, l, c))| {
+            let ts = newest_ts - (n - 1 - i as i64) * BR_STEP;
+            candle(ts, o, h, l, c, 1.0)
+        })
+        .collect()
+}
+
+/// Context at anchor_time() with only the 5m series set: context_with_candles(101.0, "5m", bundle_with("5m", candles)).
+fn br_ctx(candles: Vec<screenerbot::ohlcvs::Candle>) -> EvaluationContext {
+    context_with_candles(101.0, "5m", bundle_with("5m", candles))
+}
+
+#[tokio::test]
+async fn breakout_retest_tolerance_exactly_1_5_pct() {
+    let fresh_ts = anchor_ts() - BR_STEP;
+    let cond = default_retest();
+
+    // Low exactly on band_low (98.5)
+    let mut rows = br_rows();
+    for row in &mut rows[25..=36] {
+        *row = (101.0, 102.0, 98.5, 101.0);
+    }
+    let ctx = br_ctx(br_candles(&rows, fresh_ts));
+    assert!(
+        eval(&BreakoutRetestCondition, &cond, &ctx).await,
+        "every retest low exactly on band_low"
+    );
+
+    // Retest row 28 close exactly on band_low (98.5), others unchanged
+    let mut rows = br_rows();
+    rows[28] = (101.0, 102.0, 98.5, 98.5);
+    let ctx = br_ctx(br_candles(&rows, fresh_ts));
+    assert!(
+        eval(&BreakoutRetestCondition, &cond, &ctx).await,
+        "retest row 28 close exactly on band_low"
+    );
+
+    // Every retest low 101.49 (inside band, <= 101.49999999999999)
+    let mut rows = br_rows();
+    for row in &mut rows[25..=36] {
+        *row = (101.6, 102.0, 101.49, 101.8);
+    }
+    let ctx = br_ctx(br_candles(&rows, fresh_ts));
+    assert!(
+        eval(&BreakoutRetestCondition, &cond, &ctx).await,
+        "every retest low 101.49 inside band"
+    );
+
+    // Every retest low 101.51 (outside band, > 101.49999999999999)
+    // 100.0 * (1.0 + 0.015) rounds to 101.49999999999999 in f64, so that value is not the band edge.
+    let mut rows = br_rows();
+    for row in &mut rows[25..=36] {
+        *row = (101.6, 102.0, 101.51, 101.8);
+    }
+    let ctx = br_ctx(br_candles(&rows, fresh_ts));
+    assert!(
+        !eval(&BreakoutRetestCondition, &cond, &ctx).await,
+        "every retest low 101.51 outside band"
+    );
+}
+
+#[tokio::test]
+async fn breakout_retest_candle_change_exactly_25_pct() {
+    let fresh_ts = anchor_ts() - BR_STEP;
+    let cond = default_retest();
+
+    // Row 24 body and range exactly 25%
+    let mut rows = br_rows();
+    rows[24] = (100.0, 125.0, 100.0, 125.0);
+    let ctx = br_ctx(br_candles(&rows, fresh_ts));
+    assert!(
+        eval(&BreakoutRetestCondition, &cond, &ctx).await,
+        "row 24 body and range exactly 25%"
+    );
+
+    // Row 24 body and range 25.01%
+    let mut rows = br_rows();
+    rows[24] = (100.0, 125.01, 100.0, 125.01);
+    let ctx = br_ctx(br_candles(&rows, fresh_ts));
+    assert!(
+        !eval(&BreakoutRetestCondition, &cond, &ctx).await,
+        "row 24 body and range 25.01% exceeds 25%"
+    );
+
+    // Row 24 at 25% with max_change_pct = 24.0
+    let mut rows = br_rows();
+    rows[24] = (100.0, 125.0, 100.0, 125.0);
+    let ctx = br_ctx(br_candles(&rows, fresh_ts));
+    let strict_cond = retest_cond(12, 1.5, 24.0, true);
+    assert!(
+        !eval(&BreakoutRetestCondition, &strict_cond, &ctx).await,
+        "row 24 at 25% exceeds 24% limit"
+    );
+}
+
+#[tokio::test]
+async fn breakout_retest_23_candles_is_err() {
+    let fresh_ts = anchor_ts() - BR_STEP;
+    let cond = default_retest();
+
+    // Drop row 0 -> 36 closed candles
+    let rows = &br_rows()[1..];
+    let ctx = br_ctx(br_candles(rows, fresh_ts));
+    let err = eval_err(&BreakoutRetestCondition, &cond, &ctx).await;
+    assert!(
+        matches!(
+            err,
+            StrategyError::InsufficientCandles {
+                indicator: "breakout retest",
+                available: 36,
+                required: 37,
+            }
+        ),
+        "unexpected error: {err}"
+    );
+
+    // Same 36 rows plus one forming candle at anchor_ts()
+    let mut rows_with_forming = rows.to_vec();
+    rows_with_forming.push((101.0, 102.0, 100.5, 101.0));
+    let ctx = br_ctx(br_candles(&rows_with_forming, anchor_ts()));
+    let err = eval_err(&BreakoutRetestCondition, &cond, &ctx).await;
+    assert!(
+        matches!(
+            err,
+            StrategyError::InsufficientCandles {
+                indicator: "breakout retest",
+                available: 36,
+                required: 37,
+            }
+        ),
+        "unexpected error: {err}"
+    );
+}
+
+#[tokio::test]
+async fn breakout_retest_24_candles_ok() {
+    let fresh_ts = anchor_ts() - BR_STEP;
+    let cond = default_retest();
+    let ctx = br_ctx(br_candles(&br_rows(), fresh_ts));
+    assert!(
+        eval(&BreakoutRetestCondition, &cond, &ctx).await,
+        "full 37 rows fresh evaluates to true"
+    );
+}
+
+#[tokio::test]
+async fn breakout_retest_forming_candle_excluded() {
+    let fresh_ts = anchor_ts() - BR_STEP;
+    let cond = default_retest();
+
+    // 37 rows fresh plus forming row at anchor_ts()
+    let mut candles = br_candles(&br_rows(), fresh_ts);
+    candles.push(candle(anchor_ts(), 101.0, 102.0, 49.0, 50.0, 1.0));
+    let ctx = br_ctx(candles);
+    assert!(
+        eval(&BreakoutRetestCondition, &cond, &ctx).await,
+        "forming candle at anchor_ts is excluded"
+    );
+}
+
+#[tokio::test]
+async fn breakout_retest_stale_series_is_err() {
+    let cond = default_retest();
+
+    // Age 1200 s > 900
+    let stale_ts = anchor_ts() - 4 * BR_STEP;
+    let ctx = br_ctx(br_candles(&br_rows(), stale_ts));
+    let err = eval_err(&BreakoutRetestCondition, &cond, &ctx).await;
+    assert!(
+        matches!(err, StrategyError::StaleCandleData { .. }),
+        "unexpected error: {err}"
+    );
+
+    // Age exactly 900 s
+    let boundary_ts = anchor_ts() - 3 * BR_STEP;
+    let ctx = br_ctx(br_candles(&br_rows(), boundary_ts));
+    assert!(
+        eval(&BreakoutRetestCondition, &cond, &ctx).await,
+        "age exactly 900 s is not stale"
+    );
+}
+
+#[tokio::test]
+async fn breakout_retest_no_retest_touch_false() {
+    let fresh_ts = anchor_ts() - BR_STEP;
+    let cond = default_retest();
+
+    // Every retest low 101.6 > 101.5 (above band)
+    let mut rows = br_rows();
+    for row in &mut rows[25..=36] {
+        *row = (101.8, 102.0, 101.6, 101.9);
+    }
+    let ctx = br_ctx(br_candles(&rows, fresh_ts));
+    assert!(
+        !eval(&BreakoutRetestCondition, &cond, &ctx).await,
+        "no retest low touches the band"
+    );
+}
+
+#[tokio::test]
+async fn breakout_retest_close_below_level_false() {
+    let fresh_ts = anchor_ts() - BR_STEP;
+    let cond = default_retest();
+
+    // Retest row 28 close 98.4 < band_low 98.5
+    let mut rows = br_rows();
+    rows[28] = (101.0, 102.0, 98.4, 98.4);
+    let ctx = br_ctx(br_candles(&rows, fresh_ts));
+    assert!(
+        !eval(&BreakoutRetestCondition, &cond, &ctx).await,
+        "retest row 28 close below band_low"
+    );
+
+    // Retest row 28 close 99.0 (below level 100 but inside band [98.5, 101.5])
+    let mut rows = br_rows();
+    rows[28] = (101.0, 102.0, 99.0, 99.0);
+    let ctx = br_ctx(br_candles(&rows, fresh_ts));
+    assert!(
+        eval(&BreakoutRetestCondition, &cond, &ctx).await,
+        "retest row 28 close below level but inside band"
+    );
+}
+
+#[tokio::test]
+async fn breakout_retest_higher_low_required() {
+    let fresh_ts = anchor_ts() - BR_STEP;
+
+    // Retest row 30 low 97.9 < base low 98.0
+    let mut rows = br_rows();
+    rows[30] = (101.0, 102.0, 97.9, 101.0);
+    let ctx = br_ctx(br_candles(&rows, fresh_ts));
+    assert!(
+        !eval(&BreakoutRetestCondition, &default_retest(), &ctx).await,
+        "retest row 30 low 97.9 below base low with higher_low required"
+    );
+    assert!(
+        eval(
+            &BreakoutRetestCondition,
+            &retest_cond(12, 1.5, 25.0, false),
+            &ctx
+        )
+        .await,
+        "retest row 30 low 97.9 passes when higher_low is false"
+    );
+
+    // Retest row 30 low exactly 98.0 (equal to base low)
+    let mut rows = br_rows();
+    rows[30] = (101.0, 102.0, 98.0, 101.0);
+    let ctx = br_ctx(br_candles(&rows, fresh_ts));
+    assert!(
+        !eval(&BreakoutRetestCondition, &default_retest(), &ctx).await,
+        "retest row 30 low 98.0 equal to base low fails with higher_low required"
+    );
+}
+
+#[tokio::test]
+async fn breakout_retest_retest_window_expired_false() {
+    let fresh_ts = anchor_ts() - BR_STEP;
+
+    // 38 rows fresh (breakout is 13 candles back, window 12)
+    let mut rows = br_rows();
+    rows.push((101.0, 102.0, 100.5, 101.0));
+    let ctx = br_ctx(br_candles(&rows, fresh_ts));
+    assert!(
+        !eval(&BreakoutRetestCondition, &default_retest(), &ctx).await,
+        "breakout 13 candles back with window 12 is expired"
+    );
+
+    // Base 37 rows with retest_window = 5 (breakout 12 candles back)
+    let ctx = br_ctx(br_candles(&br_rows(), fresh_ts));
+    assert!(
+        !eval(
+            &BreakoutRetestCondition,
+            &retest_cond(5, 1.5, 25.0, true),
+            &ctx
+        )
+        .await,
+        "breakout 12 candles back with window 5 is expired"
+    );
+
+    // Base 37 rows with retest_window = 12
+    assert!(
+        eval(
+            &BreakoutRetestCondition,
+            &retest_cond(12, 1.5, 25.0, true),
+            &ctx
+        )
+        .await,
+        "breakout 12 candles back with window 12 is valid"
     );
 }
 
