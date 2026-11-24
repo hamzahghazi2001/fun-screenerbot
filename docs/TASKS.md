@@ -73,7 +73,7 @@ Manual gate (you): merge F1+F2 to `fork/main`, CI build, deploy, exit-A TOML + 4
   - Files: `src/fork/balance.rs`, `src/fork/mod.rs`
   - Tests (inline): `size_floor_applies`, `size_ceiling_applies`, `size_nan_balance_err`, `slot_flip_exactly_40_usd`, `slot_below_40_usd_is_2`, `missing_price_gives_2_slots`.
 
-- [ ] **T10 Wire sizing into trader + semaphore** 🔒 if the balance cache lives under `src/wallets` · claude
+- [x] **T10 Wire sizing into trader + semaphore** 🔒 if the balance cache lives under `src/wallets` · claude (balance read-only from src/wallets, owner-approved; semaphore in positions/worker.rs not state.rs; tests inline; third-slot race → T10b; fresh-session review pending)
   - Goal: `get_trade_size_native()` / `get_max_open_positions()` use T09 when enabled, reading a cached SOL balance (no new RPC); capacity check uses `slot_cap`; `GLOBAL_POSITION_SEMAPHORE` sized at `max(max_open_positions, third_slot_max_positions)` when enabled so 3 slots need no restart.
   - Files: `src/trader/config.rs`, `src/trader/safety/limits.rs`, `src/positions/state.rs`, `tests/trading.rs`
   - Tests: `dynamic_size_off_uses_trade_size_sol`, `dynamic_size_on_uses_balance`, `capacity_check_allows_third_slot_above_40`, `semaphore_sized_for_third_slot` (SPEC test 3, F3 part). Then fresh-session review (SPEC test 7).

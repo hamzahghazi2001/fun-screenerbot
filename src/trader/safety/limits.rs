@@ -36,6 +36,13 @@ pub async fn position_capacity() -> PositionCapacity {
 
 /// Check if we can open a new position based on limits
 pub async fn check_position_limits() -> crate::trader::Result<bool> {
+    // FORK: F3. With dynamic sizing on, an entry whose size cannot be computed (balance
+    // unknown or stale, invalid sizing config) is refused rather than sized by fallback.
+    if let Some(Err(err)) = config::dynamic_trade_size_now() {
+        return Err(crate::trader::Error::CoreServicesNotReady {
+            pending: format!("dynamic trade size: {err}"),
+        });
+    }
     Ok(position_capacity().await.has_room())
 }
 

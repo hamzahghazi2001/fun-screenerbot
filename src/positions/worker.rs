@@ -247,7 +247,8 @@ pub async fn initialize_positions_system() -> Result<()> {
 
     // Initialize global position semaphore and reconcile with existing open positions
     {
-        let max_open_positions = crate::config::with_config(|cfg| cfg.trader.max_open_positions);
+        // FORK: F3. Off = upstream `max_open_positions`; on = room for the third slot.
+        let max_open_positions = crate::trader::config::get_semaphore_capacity();
 
         // Initialize the semaphore with configured capacity
         crate::positions::init_global_position_semaphore(max_open_positions);
