@@ -63,7 +63,7 @@ Gate before T03 spec: read Explore Mode rejection reasons — does `max_top_hold
 Manual gate (you): merge F1+F2 to `fork/main`, CI build, deploy, exit-A TOML + 48h EXIT strategy, entry tree TokenAge + BreakoutRetest, SPEC tests 4-6, then `trader.enabled = true`.
 
 ### F3 Dynamic sizing + third slot (money path)
-- [ ] **T08 Sizing config fields** · flash
+- [x] **T08 Sizing config fields** · flash
   - Goal: append to `TraderConfig`: `dynamic_size_enabled = false`, `dynamic_size_pct = 10.0`, `dynamic_size_floor_sol = 0.001`, `dynamic_size_ceiling_sol = 10.0`, `third_slot_threshold_usd = 40.0`, `third_slot_max_positions = 3`.
   - Files: `src/config/schemas/trader.rs`, `locales/en/config.ftl`
   - Tests: `metadata_catalog_tests`, trader defaults test.

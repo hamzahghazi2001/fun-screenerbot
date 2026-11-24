@@ -1401,3 +1401,22 @@ config-filtering-rugcheck-max-top-10-holders-pct = Max Top 10 Holders
     .hint = Combined max for the 10 largest ordinary (non-pool) holders; used only when the holder gate is on
     .unit = %
 
+# FORK: dynamic sizing + third slot (F3)
+config-trader-dynamic-size-enabled = Dynamic Trade Size
+    .hint = Size each entry as a percent of the SOL balance instead of the fixed trade size
+config-trader-dynamic-size-pct = Dynamic Size
+    .hint = Percent of the SOL balance spent on each new position; used only when dynamic size is on
+    .unit = %
+config-trader-dynamic-size-floor-sol = Dynamic Size Floor
+    .hint = Smallest entry dynamic sizing will send
+    .unit = SOL
+config-trader-dynamic-size-ceiling-sol = Dynamic Size Ceiling
+    .hint = Largest entry dynamic sizing will send
+    .unit = SOL
+config-trader-third-slot-threshold-usd = Third Slot Threshold
+    .hint = Balance in USD at or above which the larger slot cap applies; used only when dynamic size is on
+    .unit = USD
+config-trader-third-slot-max-positions = Slots Above Threshold
+    .hint = Most open positions once the balance reaches the threshold
+    .unit = pos
+

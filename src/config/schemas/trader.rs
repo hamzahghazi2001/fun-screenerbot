@@ -741,6 +741,57 @@ config_struct! {
             category: ConfigCategory::LossLimit,
         })]
         loss_limit_auto_resume: bool = true,
+
+        // FORK: dynamic sizing + third slot (F3). Off = upstream behaviour (trade_size_sol, max_open_positions).
+        #[metadata(field_metadata! {
+            impact: ConfigImpact::Critical,
+            category: ConfigCategory::CoreTrading,
+        })]
+        dynamic_size_enabled: bool = false,
+        // FORK: F3. Percent of the cached SOL balance per entry; read only when dynamic_size_enabled.
+        #[metadata(field_metadata! {
+            min: 0.1,
+            max: 100,
+            step: 0.1,
+            impact: ConfigImpact::Critical,
+            category: ConfigCategory::CoreTrading,
+        })]
+        dynamic_size_pct: f64 = 10.0,
+        // FORK: F3. Smallest dynamic entry in SOL.
+        #[metadata(field_metadata! {
+            min: MIN_TRADE_SIZE_NATIVE,
+            max: 10,
+            step: 0.001,
+            impact: ConfigImpact::Critical,
+            category: ConfigCategory::CoreTrading,
+        })]
+        dynamic_size_floor_sol: f64 = 0.001,
+        // FORK: F3. Largest dynamic entry in SOL.
+        #[metadata(field_metadata! {
+            min: MIN_TRADE_SIZE_NATIVE,
+            max: 10,
+            step: 0.001,
+            impact: ConfigImpact::Critical,
+            category: ConfigCategory::CoreTrading,
+        })]
+        dynamic_size_ceiling_sol: f64 = 10.0,
+        // FORK: F3. Balance in USD at or above which third_slot_max_positions applies.
+        #[metadata(field_metadata! {
+            min: 0,
+            max: 1000000,
+            step: 1,
+            impact: ConfigImpact::High,
+            category: ConfigCategory::CoreTrading,
+        })]
+        third_slot_threshold_usd: f64 = 40.0,
+        // FORK: F3. Slot cap once the balance reaches third_slot_threshold_usd.
+        #[metadata(field_metadata! {
+            min: 1,
+            max: 100,
+            impact: ConfigImpact::High,
+            category: ConfigCategory::CoreTrading,
+        })]
+        third_slot_max_positions: usize = 3,
     }
 }
 
@@ -1472,5 +1523,20 @@ mod tests {
             toml::from_str::<TraderConfig>("dca_measure_from = \"peak\"\n").is_err(),
             "a typed trader section refuses an unknown basis"
         );
+    }
+
+    // FORK: dynamic sizing defaults (F3)
+    #[test]
+    fn fork_dynamic_sizing_defaults_off() {
+        let trader = TraderConfig::default();
+        assert!(!trader.dynamic_size_enabled);
+        assert_eq!(trader.dynamic_size_pct, 10.0);
+        assert_eq!(trader.dynamic_size_floor_sol, 0.001);
+        assert_eq!(trader.dynamic_size_ceiling_sol, 10.0);
+        assert_eq!(trader.third_slot_threshold_usd, 40.0);
+        assert_eq!(trader.third_slot_max_positions, 3);
+        // upstream sizing unchanged
+        assert_eq!(trader.trade_size_sol, 0.005);
+        assert_eq!(trader.max_open_positions, 2);
     }
 }
