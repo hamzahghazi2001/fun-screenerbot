@@ -3,4 +3,5 @@
 
 //! Personal-fork features: new logic lives here, upstream files only register it.
 
+pub mod balance;
 pub mod holder_gate;

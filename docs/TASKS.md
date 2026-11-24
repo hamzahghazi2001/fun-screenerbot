@@ -68,7 +68,7 @@ Manual gate (you): merge F1+F2 to `fork/main`, CI build, deploy, exit-A TOML + 4
   - Files: `src/config/schemas/trader.rs`, `locales/en/config.ftl`
   - Tests: `metadata_catalog_tests`, trader defaults test.
 
-- [ ] **T09 Sizing + slot math (pure)** · claude
+- [x] **T09 Sizing + slot math (pure)** · claude (fresh-session review pending, with T10)
   - Goal: `src/fork/balance.rs`: `dynamic_trade_size(balance_sol, &cfg) -> Result<f64>` (10%, clamped floor..ceiling, Err on NaN/≤0/unknown balance) and `slot_cap(balance_sol, sol_usd: Option<f64>, &cfg) -> usize` (≥ $40 → 3, missing/NaN price → base cap).
   - Files: `src/fork/balance.rs`, `src/fork/mod.rs`
   - Tests (inline): `size_floor_applies`, `size_ceiling_applies`, `size_nan_balance_err`, `slot_flip_exactly_40_usd`, `slot_below_40_usd_is_2`, `missing_price_gives_2_slots`.
