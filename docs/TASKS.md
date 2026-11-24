@@ -55,7 +55,7 @@ Gate before T03 spec: read Explore Mode rejection reasons — does `max_top_hold
   - Tests: `breakout_retest_tolerance_exactly_1_5_pct`, `..._candle_change_exactly_25_pct`, `..._23_candles_is_err`, `..._24_candles_ok`, `..._forming_candle_excluded`, `..._stale_series_is_err`, `..._no_retest_touch_false`, `..._close_below_level_false`, `..._higher_low_required`, `..._retest_window_expired_false` (SPEC test 2).
 
 ### Build + deploy prep
-- [ ] **T07 Trim CI to the Linux headless build** · flash
+- [x] **T07 Trim CI to the Linux headless build** · flash (also removed the macOS release-gate test in tools/tests/macos_signing.test.mjs that read build.yml; actionlint not installed, YAML checked with PyYAML)
   - Goal: reduce `build.yml` to the single Linux headless job on `ubuntu-22.04` (glibc < 2.34), triggered on `v*` tags and `workflow_dispatch`, uploading the binary as an artifact.
   - Files: `.github/workflows/build.yml`
   - Tests: `actionlint` if installed, else YAML parse; no Rust change.

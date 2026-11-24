@@ -126,21 +126,7 @@ test("plugin verification preserves the executable-memory permission", () => {
   );
 });
 
-test("the macOS release gate verifies the actual package and architecture", () => {
-  const workflow = fs.readFileSync(path.join(ROOT, ".github/workflows/build.yml"), "utf8");
-  assert.ok(
-    workflow.includes(
-      'node electron/tools/macos-signing.js --verify "$APP" "${{ matrix.electron-arch }}"'
-    )
-  );
-  const packaging = workflow.slice(
-    workflow.indexOf("  package-macos:"),
-    workflow.indexOf("  package-linux:")
-  );
-  assert.match(packaging, /os: macos-\d+-intel\s+arch: x64/);
-  assert.match(packaging, /os: macos-15\s+arch: arm64/);
-  assert.doesNotMatch(workflow, /os: macos-14\b/, "retired runners cannot build a release");
-});
+// FORK: T07 — build.yml no longer packages macOS; the release-gate assertion on it was removed.
 
 test("the packaged loader refuses a non-native runner before spawning Electron", () => {
   const foreignArchitecture = process.arch === "x64" ? "arm64" : "x64";
