@@ -10,7 +10,7 @@ Models: **opus** = claude-opus-4-6-thinking · **sonnet** = claude-sonnet-4-6 ·
 ## Day 1 — holder gate, breakout-retest, live on exit A
 
 ### F0 Baseline
-- [ ] **T00 Baseline green run** · flash
+- [x] **T00 Baseline green run** · flash (baseline at dfe1c9b2e, `CARGO_BUILD_JOBS=2 cargo nextest run --all-targets --no-tests=fail`: 4001 passed, 0 failed, 116 skipped; recorded here, HANDOFF.md not created)
   - Goal: `cargo fetch`, warm `cargo build`, record the baseline `CARGO_BUILD_JOBS=2 cargo nextest run --all-targets --no-tests=fail` (pass/fail counts, any pre-existing failures) in docs/HANDOFF.md. No code changes.
   - Files: `docs/HANDOFF.md`
   - Tests: full suite (SPEC test 1). Any failure here blocks F1 until understood.
