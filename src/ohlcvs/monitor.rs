@@ -1085,12 +1085,27 @@ impl OhlcvMonitor {
                 active.keys().cloned().collect()
             };
 
+            // FORK: OHLCV passed-first
+            let passed_first = with_config(|cfg| cfg.ohlcv.passed_first);
+            let (tokens, passed) = if passed_first {
+                let held = self.held_mints().await;
+                let passed: std::collections::HashSet<String> =
+                    crate::tokens::get_passed_tokens(self.db.chain())
+                        .into_iter()
+                        .collect();
+                let tokens = crate::fork::ohlcv_priority::fetch_order(tokens, &held, &passed, true);
+                (tokens, Some(passed))
+            } else {
+                (tokens, None)
+            };
+
             let processed_count = tokens.len();
             let cycle_start = Instant::now();
             self.record_monitor_cycle_start(processed_count).await;
 
             for mint in tokens {
-                match self.process_token(&mint).await {
+                let is_passed = passed.as_ref().is_some_and(|p| p.contains(&mint)); // FORK: OHLCV passed-first
+                match self.process_token(&mint, is_passed).await {
                     Ok(_) => {}
                     Err(OhlcvError::NotFound(_)) => {
                         logger::debug(
@@ -1194,7 +1209,8 @@ impl OhlcvMonitor {
         }
     }
 
-    async fn process_token(&self, mint: &str) -> OhlcvResult<()> {
+    async fn process_token(&self, mint: &str, passed: bool) -> OhlcvResult<()> {
+        // FORK: OHLCV passed-first
         let action = {
             let active = self.active_tokens.read().await;
             let config = active
@@ -1210,6 +1226,10 @@ impl OhlcvMonitor {
                 self.fetch_token_data(mint).await?;
             }
             crate::ohlcvs::priorities::RecommendedAction::Throttle(_duration) => {
+                // FORK: OHLCV passed-first
+                if passed && with_config(|cfg| cfg.ohlcv.passed_first) {
+                    self.fetch_token_data(mint).await?;
+                }
                 // Skip this cycle, will fetch on next check based on timing
             }
             crate::ohlcvs::priorities::RecommendedAction::Pause => {
@@ -1353,12 +1373,24 @@ impl OhlcvMonitor {
             )));
         }
 
-        let priority = {
+        let stored = {
+            // FORK: OHLCV passed-first
             let active = self.active_tokens.read().await;
             active
                 .get(mint)
                 .ok_or_else(|| OhlcvError::NotFound(mint.to_string()))?
                 .priority
+        };
+        // FORK: OHLCV passed-first
+        let passed_first = with_config(|cfg| cfg.ohlcv.passed_first);
+        let (priority, passed) = if passed_first {
+            let passed = crate::tokens::get_passed_tokens(self.db.chain())
+                .iter()
+                .any(|m| m == mint);
+            let priority = crate::fork::ohlcv_priority::effective_priority(stored, passed, true);
+            (priority, passed)
+        } else {
+            (stored, false)
         };
 
         let pool = series.ok_or_else(|| OhlcvError::PoolNotFound(mint.to_string()))?;
@@ -1624,7 +1656,11 @@ impl OhlcvMonitor {
         }
 
         if fetch_succeeded {
-            self.refresh_native_timeframes(mint, &pool_address, priority)
+            // FORK: OHLCV passed-first
+            let timeframes =
+                crate::fork::ohlcv_priority::native_timeframes(stored, passed, passed_first)
+                    .unwrap_or(&AGGREGATED_TIMEFRAMES);
+            self.refresh_native_timeframes(mint, &pool_address, priority, timeframes)
                 .await;
         }
 
@@ -2198,6 +2234,24 @@ impl OhlcvMonitor {
                     .collect()
             };
 
+            // FORK: OHLCV passed-first
+            let passed_first = with_config(|cfg| cfg.ohlcv.passed_first);
+            let tokens = if passed_first {
+                let held = self.held_mints().await;
+                let passed: std::collections::HashSet<String> =
+                    crate::tokens::get_passed_tokens(self.db.chain())
+                        .into_iter()
+                        .collect();
+                tokens
+                    .into_iter()
+                    .filter(|(mint, _)| {
+                        crate::fork::ohlcv_priority::may_fetch(mint, &held, &passed, true)
+                    })
+                    .collect()
+            } else {
+                tokens
+            };
+
             let cycle_start = Instant::now();
             self.record_gap_cycle_start(tokens.len()).await;
 
@@ -2345,6 +2399,25 @@ impl OhlcvMonitor {
         result
     }
 
+    // FORK: OHLCV passed-first
+    async fn held_mints(&self) -> std::collections::HashSet<String> {
+        let chain = self.db.chain();
+        match crate::positions::db::get_store_chain().await {
+            Ok(store_chain) if store_chain == chain => crate::positions::books::held_mints()
+                .await
+                .into_iter()
+                .collect::<std::collections::HashSet<_>>(),
+            Ok(_) => std::collections::HashSet::new(),
+            Err(e) => {
+                logger::debug(
+                    LogTag::Ohlcv,
+                    &format!("Open positions unavailable for {chain} pool sync: {e}"),
+                );
+                std::collections::HashSet::new()
+            }
+        }
+    }
+
     async fn sync_pool_service_tokens(self: Arc<Self>) {
         let mut tick = interval(Duration::from_secs(30)); // Every 30 seconds (Pool Service updates every 5-10s)
                                                           // Passed tokens the last sync left without a slot, logged only when it changes.
@@ -2371,20 +2444,7 @@ impl OhlcvMonitor {
 
             // Held mints of the live and paper books raise priority only when the position
             // store holds this monitor's chain: exit strategies read their candles.
-            let open_positions = match crate::positions::db::get_store_chain().await {
-                Ok(store_chain) if store_chain == chain => crate::positions::books::held_mints()
-                    .await
-                    .into_iter()
-                    .collect::<std::collections::HashSet<_>>(),
-                Ok(_) => std::collections::HashSet::new(),
-                Err(e) => {
-                    logger::debug(
-                        LogTag::Ohlcv,
-                        &format!("Open positions unavailable for {chain} pool sync: {e}"),
-                    );
-                    std::collections::HashSet::new()
-                }
-            };
+            let open_positions = self.held_mints().await; // FORK: OHLCV passed-first
 
             let mut added = 0;
             let mut upgraded = 0;
@@ -2485,7 +2545,15 @@ impl OhlcvMonitor {
                 }
             }
 
+            // FORK: OHLCV passed-first
+            let passed_first = with_config(|cfg| cfg.ohlcv.passed_first);
+
             for mint in &plan.add {
+                // FORK: OHLCV passed-first
+                if passed_first && !open_positions.contains(mint) && !passed.contains(mint) {
+                    continue;
+                }
+
                 let priority = if open_positions.contains(mint) {
                     Priority::Critical
                 } else {
@@ -3067,7 +3135,14 @@ impl OhlcvMonitor {
     /// token kept to its deep history (`deep_history_wanted`) pages it further back from the
     /// Data Server while it is usable and a pass is due (`deep_history_due`), so a deep pass
     /// never costs a cycle its refresh.
-    async fn refresh_native_timeframes(&self, mint: &str, pool_address: &str, priority: Priority) {
+    // FORK: OHLCV passed-first
+    async fn refresh_native_timeframes(
+        &self,
+        mint: &str,
+        pool_address: &str,
+        priority: Priority,
+        timeframes: &[Timeframe],
+    ) {
         let pool_is_native = self.pool_is_native(mint, pool_address).await;
         let refresh_fetch = |timeframe: Timeframe, limit: usize| {
             let monitor = self.clone();
@@ -3100,6 +3175,7 @@ impl OhlcvMonitor {
             pool_address,
             priority,
             data_server_usable(),
+            timeframes, // FORK: OHLCV passed-first
             refresh_fetch,
             deep_fetch,
         )
@@ -3109,12 +3185,14 @@ impl OhlcvMonitor {
     /// `refresh_native_timeframes` over a page fetch per timeframe (`refresh_fetch`, the
     /// newest `limit` candles) and a deep-history page fetch (`deep_fetch`, see
     /// `deepen_history`), with the Data Server's usability given.
+    // FORK: OHLCV passed-first
     async fn refresh_then_deepen<R, RFut, D, DFut>(
         &self,
         mint: &str,
         pool_address: &str,
         priority: Priority,
         data_server_usable: bool,
+        timeframes: &[Timeframe],
         mut refresh_fetch: R,
         deep_fetch: D,
     ) where
@@ -3130,9 +3208,11 @@ impl OhlcvMonitor {
         let now = Utc::now().timestamp();
         let selected = {
             let (mint, pool) = (mint.to_string(), pool_address.to_string());
+            let timeframes = timeframes.to_vec(); // FORK: OHLCV passed-first
             self.blocking(move |monitor| {
-                let mut due = Vec::with_capacity(AGGREGATED_TIMEFRAMES.len());
-                for timeframe in AGGREGATED_TIMEFRAMES {
+                let mut due = Vec::with_capacity(timeframes.len()); // FORK: OHLCV passed-first
+                for timeframe in timeframes {
+                    // FORK: OHLCV passed-first
                     // A chart read-through is asking the Data Server for this series right now.
                     if monitor.read_through_active(&mint, timeframe) {
                         continue;
@@ -5451,6 +5531,7 @@ mod tests {
                     "pool",
                     Priority::Critical,
                     true,
+                    &AGGREGATED_TIMEFRAMES, // FORK: OHLCV passed-first
                     refresh,
                     paged_server(&requests, 1, 10),
                 )

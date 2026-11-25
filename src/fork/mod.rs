@@ -5,3 +5,4 @@
 
 pub mod balance;
 pub mod holder_gate;
+pub mod ohlcv_priority;
