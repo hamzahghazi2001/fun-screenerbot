@@ -112,25 +112,24 @@ pub fn get_semaphore_capacity() -> usize {
     with_config(|cfg| semaphore_capacity(&cfg.trader))
 }
 
-/// FORK: F3 (T10b). Whether `in_use` permits (counting the one just taken) fit the slot
-/// cap: always true when dynamic sizing is off (upstream), else
-/// `in_use <= max_open_positions_for(..)`.
+/// FORK: F3 (T10b, T10c). Whether `in_use` permits (counting the one just taken) fit the
+/// slot cap: `in_use <= max_open_positions_for(..)`, which is `max_open_positions` when
+/// dynamic sizing is off. Off still caps, because the semaphore keeps its boot-time size: one
+/// built with dynamic sizing on holds the third-slot permit after it is switched off (T10c).
 pub fn permit_within_cap(
     trader: &TraderConfig,
     in_use: usize,
     balance: Option<f64>,
     sol_usd: Option<f64>,
 ) -> bool {
-    if !trader.dynamic_size_enabled {
-        return true;
-    }
     in_use <= max_open_positions_for(trader, balance, sol_usd)
 }
 
 /// [`permit_within_cap`] with the cached balance and SOL/USD price of the live config.
 pub fn permit_within_slot_cap(in_use: usize) -> bool {
+    // FORK: F3 (T10c). Off: the live `max_open_positions`, not "always allowed".
     if !is_dynamic_size_enabled() {
-        return true;
+        return in_use <= get_max_open_positions();
     }
     let balance = cached_sol_balance();
     let sol_usd = crate::apis::native_price::known_native_price();
@@ -280,8 +279,30 @@ mod tests {
     }
 
     #[test]
-    fn permit_check_off_always_allows() {
-        assert!(permit_within_cap(&TraderConfig::default(), 99, None, None));
+    fn permit_check_off_uses_max_open_positions() {
+        let mut off = TraderConfig::default();
+        assert!(permit_within_cap(&off, 2, None, None));
+        assert!(!permit_within_cap(&off, 3, None, None));
+        off.max_open_positions = 7;
+        assert!(permit_within_cap(&off, 7, Some(100.0), Some(200.0)));
+        assert!(!permit_within_cap(&off, 8, Some(100.0), Some(200.0)));
+    }
+
+    #[test]
+    fn permit_check_switched_off_at_runtime_caps_third_permit() {
+        // Booted on: the semaphore holds the third-slot permit.
+        assert_eq!(semaphore_capacity(&on()), 3);
+        // Switched off at runtime: that permit can be taken but must not open a position,
+        // even at a balance worth $40 or more (0.25 SOL * $160).
+        let mut switched_off = on();
+        switched_off.dynamic_size_enabled = false;
+        assert!(!permit_within_cap(
+            &switched_off,
+            3,
+            Some(0.25),
+            Some(160.0)
+        ));
+        assert!(permit_within_cap(&switched_off, 2, Some(0.25), Some(160.0)));
     }
 
     #[test]

@@ -73,13 +73,17 @@ Manual gate (you): merge F1+F2 to `fork/main`, CI build, deploy, exit-A TOML + 4
   - Files: `src/fork/balance.rs`, `src/fork/mod.rs`
   - Tests (inline): `size_floor_applies`, `size_ceiling_applies`, `size_nan_balance_err`, `slot_flip_exactly_40_usd`, `slot_below_40_usd_is_2`, `missing_price_gives_2_slots`.
 
-- [x] **T10 Wire sizing into trader + semaphore** 🔒 if the balance cache lives under `src/wallets` · claude (balance read-only from src/wallets, owner-approved; semaphore in positions/worker.rs not state.rs; tests inline; third-slot race → T10b; fresh-session review pending)
+- [x] **T10 Wire sizing into trader + semaphore** 🔒 if the balance cache lives under `src/wallets` · claude (balance read-only from src/wallets, owner-approved; semaphore in positions/worker.rs not state.rs; tests inline; third-slot race → T10b; fresh-session review of T09+T10+T10b done 2026-11-25: no blocker, one should-fix (permit check uncapped when dynamic sizing is switched off at runtime) closed by T10c)
   - Goal: `get_trade_size_native()` / `get_max_open_positions()` use T09 when enabled, reading a cached SOL balance (no new RPC); capacity check uses `slot_cap`; `GLOBAL_POSITION_SEMAPHORE` sized at `max(max_open_positions, third_slot_max_positions)` when enabled so 3 slots need no restart.
   - Files: `src/trader/config.rs`, `src/trader/safety/limits.rs`, `src/positions/state.rs`, `tests/trading.rs`
   - Tests: `dynamic_size_off_uses_trade_size_sol`, `dynamic_size_on_uses_balance`, `capacity_check_allows_third_slot_above_40`, `semaphore_sized_for_third_slot` (SPEC test 3, F3 part). Then fresh-session review (SPEC test 7).
 - [x] **T10b Close the third-slot race** · claude (re-check slot cap after the permit in open.rs; permits_in_use accounts for boot overflow holders)
   - Files: `src/positions/state.rs`, `src/positions/operations/open.rs`, `src/trader/config.rs`, `tests/positions_lifecycle.rs`
   - Tests: `permit_check_*`, `racing_opens_cannot_take_the_third_slot_below_40`, `a_slot_is_released_at_most_once_however_many_paths_run`. Then fresh-session review of T09 + T10 + T10b (SPEC test 7).
+
+- [x] **T10c Cap the permit check when dynamic sizing is off** · claude (off: `in_use <= max_open_positions`; was always allowed, so a semaphore booted with 3 permits let a third position open after a runtime switch-off)
+  - Files: `src/trader/config.rs`
+  - Tests: `permit_check_off_uses_max_open_positions`, `permit_check_switched_off_at_runtime_caps_third_permit`, `permit_check_*`, `racing_opens_cannot_take_the_third_slot_below_40`.
 
 ## Day 2 — score, runner-only trail, option to switch to exit B
 
