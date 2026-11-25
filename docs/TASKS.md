@@ -122,5 +122,16 @@ Manual gate (you): CI build, deploy between trades, `dynamic_size_enabled = true
   - Files: `docs/HANDOFF.md`
   - Tests: none (docs).
 
+### F-OHLCV Filter-passed tokens first
+- [x] **T18 OHLCV passed-first flag** · flash-medium
+  - Goal: append `passed_first: bool = false` to `OhlcvConfig`.
+  - Files: `src/config/schemas/ohlcv.rs`, `locales/en/config.ftl`
+  - Tests: `fork_ohlcv_passed_first_defaults_off`, `metadata_catalog_tests`.
+
+- [ ] **T18b OHLCV passed-first wiring** · flash-high
+  - Goal: when on, fetch held then passed tokens (sorted), skip all others, fetch passed tokens at High (not persisted), override Throttle, refresh only 5m natively for passed non-Critical tokens. Off = upstream.
+  - Files: `src/fork/ohlcv_priority.rs`, `src/fork/mod.rs`, `src/ohlcvs/monitor.rs`
+  - Tests: the nine `ohlcv_*` unit tests in tasks/T18b.md plus three existing monitor tests.
+
 ## Later (not in the 2 days)
 Per-entry-strategy exit policy in `resolve_exit_policy()` (A and B side by side) · Solana Tracker bundler/insider filter · passphrase layer on the wallet key · paper-mode shadow clone of the entry strategy (dashboard, no code).

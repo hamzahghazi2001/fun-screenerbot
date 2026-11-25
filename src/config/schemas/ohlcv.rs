@@ -93,6 +93,13 @@ config_struct! {
             category: ConfigCategory::Sources,
         })]
         sources: OhlcvSourcesConfig = OhlcvSourcesConfig::default(),
+
+        // FORK: OHLCV passed-first. Off = upstream monitor order, priorities and timeframes.
+        #[metadata(field_metadata! {
+            impact: ConfigImpact::Medium,
+            category: ConfigCategory::General,
+        })]
+        passed_first: bool = false,
     }
 }
 
@@ -233,5 +240,19 @@ config_struct! {
             step: 1.0,
         })]
         timeout_seconds: u64 = 4,
+    }
+}
+
+// FORK: OHLCV passed-first defaults
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fork_ohlcv_passed_first_defaults_off() {
+        let ohlcv = OhlcvConfig::default();
+        assert!(!ohlcv.passed_first);
+        // upstream monitor cap unchanged
+        assert_eq!(ohlcv.max_monitored_tokens, 300);
     }
 }

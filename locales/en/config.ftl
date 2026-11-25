@@ -1420,3 +1420,7 @@ config-trader-third-slot-max-positions = Slots Above Threshold
     .hint = Most open positions once the balance reaches the threshold
     .unit = pos
 
+# FORK: OHLCV passed-first
+config-ohlcv-passed-first = Filter-Passed Tokens First
+    .hint = Refresh candles for held and filter-passed tokens first, at high priority, and skip candle fetching for every other token
+
