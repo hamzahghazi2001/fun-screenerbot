@@ -112,6 +112,31 @@ pub fn get_semaphore_capacity() -> usize {
     with_config(|cfg| semaphore_capacity(&cfg.trader))
 }
 
+/// FORK: F3 (T10b). Whether `in_use` permits (counting the one just taken) fit the slot
+/// cap: always true when dynamic sizing is off (upstream), else
+/// `in_use <= max_open_positions_for(..)`.
+pub fn permit_within_cap(
+    trader: &TraderConfig,
+    in_use: usize,
+    balance: Option<f64>,
+    sol_usd: Option<f64>,
+) -> bool {
+    if !trader.dynamic_size_enabled {
+        return true;
+    }
+    in_use <= max_open_positions_for(trader, balance, sol_usd)
+}
+
+/// [`permit_within_cap`] with the cached balance and SOL/USD price of the live config.
+pub fn permit_within_slot_cap(in_use: usize) -> bool {
+    if !is_dynamic_size_enabled() {
+        return true;
+    }
+    let balance = cached_sol_balance();
+    let sol_usd = crate::apis::native_price::known_native_price();
+    with_config(|cfg| permit_within_cap(&cfg.trader, in_use, balance, sol_usd))
+}
+
 /// `None` while dynamic sizing is off; otherwise the dynamic size of the cached balance.
 pub fn dynamic_trade_size_now() -> Option<anyhow::Result<f64>> {
     if !is_dynamic_size_enabled() {
@@ -252,6 +277,29 @@ mod tests {
         assert_eq!(semaphore_capacity(&off), 2);
         off.max_open_positions = 7;
         assert_eq!(semaphore_capacity(&off), 7);
+    }
+
+    #[test]
+    fn permit_check_off_always_allows() {
+        assert!(permit_within_cap(&TraderConfig::default(), 99, None, None));
+    }
+
+    #[test]
+    fn permit_check_refuses_third_below_40() {
+        assert!(!permit_within_cap(&on(), 3, Some(0.25), Some(159.99)));
+        assert!(permit_within_cap(&on(), 2, Some(0.25), Some(159.99)));
+    }
+
+    #[test]
+    fn permit_check_allows_third_at_40() {
+        assert!(permit_within_cap(&on(), 3, Some(0.25), Some(160.0)));
+        assert!(!permit_within_cap(&on(), 4, Some(0.25), Some(160.0)));
+    }
+
+    #[test]
+    fn permit_check_unknown_price_is_two_slots() {
+        assert!(!permit_within_cap(&on(), 3, Some(10.0), None));
+        assert!(permit_within_cap(&on(), 2, Some(10.0), None));
     }
 
     #[test]

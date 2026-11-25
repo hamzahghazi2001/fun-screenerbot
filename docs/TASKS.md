@@ -77,6 +77,9 @@ Manual gate (you): merge F1+F2 to `fork/main`, CI build, deploy, exit-A TOML + 4
   - Goal: `get_trade_size_native()` / `get_max_open_positions()` use T09 when enabled, reading a cached SOL balance (no new RPC); capacity check uses `slot_cap`; `GLOBAL_POSITION_SEMAPHORE` sized at `max(max_open_positions, third_slot_max_positions)` when enabled so 3 slots need no restart.
   - Files: `src/trader/config.rs`, `src/trader/safety/limits.rs`, `src/positions/state.rs`, `tests/trading.rs`
   - Tests: `dynamic_size_off_uses_trade_size_sol`, `dynamic_size_on_uses_balance`, `capacity_check_allows_third_slot_above_40`, `semaphore_sized_for_third_slot` (SPEC test 3, F3 part). Then fresh-session review (SPEC test 7).
+- [x] **T10b Close the third-slot race** · claude (re-check slot cap after the permit in open.rs; permits_in_use accounts for boot overflow holders)
+  - Files: `src/positions/state.rs`, `src/positions/operations/open.rs`, `src/trader/config.rs`, `tests/positions_lifecycle.rs`
+  - Tests: `permit_check_*`, `racing_opens_cannot_take_the_third_slot_below_40`, `a_slot_is_released_at_most_once_however_many_paths_run`. Then fresh-session review of T09 + T10 + T10b (SPEC test 7).
 
 ## Day 2 — score, runner-only trail, option to switch to exit B
 

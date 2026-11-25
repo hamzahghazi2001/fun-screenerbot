@@ -116,6 +116,15 @@ async fn open_position_impl(
     // and thus NOT consume a slot.
     let mut _global_permit = acquire_global_position_permit().await?;
 
+    // FORK: F3 (T10b). With the semaphore sized for the third slot, re-check the live slot
+    // cap counting every permit held (this one and other in-flight opens). Returning drops
+    // the permit unforgotten, so the slot goes back.
+    if !crate::trader::config::permit_within_slot_cap(
+        crate::positions::state::global_position_permits_in_use(),
+    ) {
+        return Err(Error::SlotUnavailable { remaining: 0 });
+    }
+
     // Acquire per-mint lock SECOND to serialize opens for same token
     let _lock = acquire_position_lock(&api_token.mint).await;
 

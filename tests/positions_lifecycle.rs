@@ -21,6 +21,12 @@ use screenerbot::positions::state::{
     init_global_position_semaphore, register_position_slot, release_position_slot,
     try_consume_global_position_permit,
 };
+// FORK: F3 (T10b)
+use screenerbot::positions::state::{
+    acquire_global_position_permit, global_position_available_permits,
+    global_position_permits_in_use, rebuild_position_slot_holders,
+    reconcile_global_position_semaphore,
+};
 use screenerbot::positions::transitions::NotLandedEvidence;
 use screenerbot::positions::PositionTransition;
 
@@ -253,6 +259,105 @@ async fn a_slot_is_released_at_most_once_however_many_paths_run() {
         !try_consume_global_position_permit(),
         "an unheld release must not free a slot"
     );
+}
+
+// FORK: F3 (T10b). With dynamic sizing on, the semaphore holds room for the third slot
+// (3) while the cap below $40 is 2. Two opens that both passed the cap check must not
+// both keep a permit: the re-check after the permit counts every permit held.
+//
+// Like the test above, the semaphore is a process-global `OnceLock`; nextest runs each
+// test in its own process, and the first assertion names the problem if it is shared.
+#[tokio::test]
+async fn racing_opens_cannot_take_the_third_slot_below_40() {
+    let _cfg = config_guard();
+    common::set_config(|cfg| cfg.trader.dynamic_size_enabled = true);
+    init_global_position_semaphore(3);
+    let start = global_position_available_permits();
+    assert_eq!(
+        start, 3,
+        "semaphore already initialised by another test in this process"
+    );
+    assert_eq!(global_position_permits_in_use(), 0);
+
+    // One position already open: it holds a permit for its lifetime.
+    assert!(try_consume_global_position_permit(), "open position's slot");
+    register_position_slot(1).await;
+    assert_eq!(global_position_available_permits(), start - 1);
+
+    // Two opens race: both passed the cap check (1 < 2) and both get a real permit.
+    let first = acquire_global_position_permit()
+        .await
+        .expect("first racing permit");
+    let second = acquire_global_position_permit()
+        .await
+        .expect("second racing permit");
+    assert_eq!(global_position_permits_in_use(), 3);
+    // No fresh balance or price in tests → cap 2, so the re-check refuses.
+    assert!(
+        !screenerbot::trader::config::permit_within_slot_cap(global_position_permits_in_use()),
+        "a third permit below $40 must be refused"
+    );
+
+    // The refused open returns early, dropping its permit unforgotten.
+    drop(second);
+    assert_eq!(global_position_permits_in_use(), 2);
+    assert!(
+        screenerbot::trader::config::permit_within_slot_cap(global_position_permits_in_use()),
+        "the second slot stays allowed"
+    );
+
+    // The other open fails later too: its permit returns as well.
+    drop(first);
+    assert_eq!(global_position_available_permits(), start - 1);
+
+    // The open position closes: back to the starting value, nothing leaked.
+    release_position_slot(1).await;
+    assert_eq!(global_position_available_permits(), start);
+    assert_eq!(global_position_permits_in_use(), 0);
+
+    // Boot with more positions open than the semaphore holds (4 > 3): the reconcile
+    // consumes 3 permits, the rebuild registers all 4 as holders. The count must include
+    // the 4th, and stay exact as each closes (the 4th close adds a permit it never took).
+    let ids = [11_i64, 12, 13, 14];
+    set_positions(
+        ids.iter()
+            .map(|id| {
+                let mut position = position_for(&format!("Overflow{id}"));
+                position.id = Some(*id);
+                position
+            })
+            .collect(),
+    )
+    .await;
+    reconcile_global_position_semaphore(start).await;
+    rebuild_position_slot_holders().await;
+    assert_eq!(global_position_available_permits(), 0);
+    assert_eq!(global_position_permits_in_use(), 4);
+    assert!(
+        acquire_global_position_permit().await.is_err(),
+        "no permit while every slot is held"
+    );
+
+    release_position_slot(11).await;
+    assert_eq!(global_position_permits_in_use(), 3, "three still open");
+    let racing = acquire_global_position_permit()
+        .await
+        .expect("freed permit");
+    assert_eq!(
+        global_position_permits_in_use(),
+        4,
+        "three open + one in flight"
+    );
+    assert!(!screenerbot::trader::config::permit_within_slot_cap(
+        global_position_permits_in_use()
+    ));
+    drop(racing);
+
+    for id in &ids[1..] {
+        release_position_slot(*id).await;
+    }
+    assert_eq!(global_position_permits_in_use(), 0, "all closed");
+    set_positions(Vec::new()).await;
 }
 
 // ==================== "IS THIS POSITION OPEN?" ====================

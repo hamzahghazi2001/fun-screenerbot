@@ -56,7 +56,42 @@ static GLOBAL_POSITION_SEMAPHORE: OnceLock<tokio::sync::Semaphore> = OnceLock::n
 /// Initialize the global position semaphore with the configured max open positions
 /// MUST be called during positions system initialization, after config is loaded
 pub fn init_global_position_semaphore(max_positions: usize) {
-    GLOBAL_POSITION_SEMAPHORE.get_or_init(|| tokio::sync::Semaphore::new(max_positions));
+    GLOBAL_POSITION_SEMAPHORE.get_or_init(|| {
+        // FORK: F3 (T10b). Recorded with the semaphore, in the same one-time init.
+        let _ = GLOBAL_POSITION_CAPACITY.set(max_positions);
+        tokio::sync::Semaphore::new(max_positions)
+    });
+}
+
+// FORK: F3 (T10b). Permits the global semaphore was built with.
+static GLOBAL_POSITION_CAPACITY: OnceLock<usize> = OnceLock::new();
+
+// FORK: F3 (T10b). Slot holders registered at the startup rebuild beyond the permits the
+// reconcile could consume (more positions open at boot than the semaphore holds). Each of
+// them adds a permit when it closes (`release_position_slot`) without ever having taken
+// one, so the semaphore's total grows by one per such close. Every other runtime path
+// keeps the total fixed: an open's `forget` and `reclaim_position_slot` move a free permit
+// to held, and `release_position_slot` returns a held one (idempotent per holder).
+static STARTUP_SLOT_OVERFLOW: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
+/// FORK: F3 (T10b). Trading slots in use: open positions holding a slot (including any
+/// over the semaphore's size at boot) plus opens in flight holding a permit. Read right
+/// after taking a permit, it includes that permit.
+///
+/// `in_use = held + in_flight + overflow_left = total - available + overflow_left`, and
+/// `total = capacity + overflow_at_boot - overflow_left`, so
+/// `in_use = capacity + overflow_at_boot - available`, which stays exact as overflow
+/// holders close.
+pub fn global_position_permits_in_use() -> usize {
+    let capacity = GLOBAL_POSITION_CAPACITY.get().copied().unwrap_or(0);
+    let overflow = STARTUP_SLOT_OVERFLOW.load(std::sync::atomic::Ordering::SeqCst);
+    (capacity + overflow).saturating_sub(get_global_position_semaphore().available_permits())
+}
+
+/// FORK: F3 (T10b). Free global position permits.
+pub fn global_position_available_permits() -> usize {
+    get_global_position_semaphore().available_permits()
 }
 
 /// Get a reference to the global position semaphore
@@ -257,6 +292,18 @@ pub async fn rebuild_position_slot_holders() {
         .iter()
         .filter_map(|position| position.id)
         .collect();
+
+    // FORK: F3 (T10b). Holders beyond the permits the startup reconcile consumed.
+    if let (Some(semaphore), Some(capacity)) = (
+        GLOBAL_POSITION_SEMAPHORE.get(),
+        GLOBAL_POSITION_CAPACITY.get(),
+    ) {
+        let consumed = capacity.saturating_sub(semaphore.available_permits());
+        STARTUP_SLOT_OVERFLOW.store(
+            open_ids.len().saturating_sub(consumed),
+            std::sync::atomic::Ordering::SeqCst,
+        );
+    }
 
     *SLOT_HOLDERS.write().await = open_ids;
 }
